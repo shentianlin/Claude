@@ -1,0 +1,631 @@
+<title>稻季控释配方地图</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;900&display=swap">
+<style>
+:root{
+  --bg:#F3F5F0; --surface:#FBFCF9; --ink:#17231D; --muted:#5A6A61; --line:#D5DDD2;
+  --sea:#E7EDE8; --land:#D9E0D3; --land-rice:#BCCDAE; --land-hover:#A9BE98;
+  --single:#C0801F; --double:#4A8A45; --triple:#23708E;
+  --urea:#3F6C9E; --cr1:#C98A2B; --cr2:#8C5812; --cr3:#E0B25E;
+  --demand:#17231D; --crop:#7B8A82; --pool:#6FA38B; --floor:#B5483B; --temp:#B5483B;
+  --good:#2F7D4F; --warn:#B7791F; --bad:#B5483B;
+  --chip:#E8EEE5;
+  --serif:"Noto Serif SC","Songti SC","STSong",serif;
+  --sans:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#101612; --surface:#161F19; --ink:#E4ECE5; --muted:#98A89E; --line:#2A362E;
+    --sea:#0E1512; --land:#232E27; --land-rice:#35492F; --land-hover:#46603D;
+    --single:#E0A043; --double:#6DB266; --triple:#4FA3C3;
+    --urea:#78A3D6; --cr1:#E0A043; --cr2:#C7863A; --cr3:#F0CC85;
+    --demand:#E4ECE5; --crop:#8C9C93; --pool:#6FB293; --floor:#E07A6B; --temp:#E07A6B;
+    --good:#5FBF83; --warn:#E0A043; --bad:#E07A6B; --chip:#223028;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#101612; --surface:#161F19; --ink:#E4ECE5; --muted:#98A89E; --line:#2A362E;
+  --sea:#0E1512; --land:#232E27; --land-rice:#35492F; --land-hover:#46603D;
+  --single:#E0A043; --double:#6DB266; --triple:#4FA3C3;
+  --urea:#78A3D6; --cr1:#E0A043; --cr2:#C7863A; --cr3:#F0CC85;
+  --demand:#E4ECE5; --crop:#8C9C93; --pool:#6FB293; --floor:#E07A6B; --temp:#E07A6B;
+  --good:#5FBF83; --warn:#E0A043; --bad:#E07A6B; --chip:#223028;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6;padding-inline:16px;padding-block:0 48px}
+.wrap{max-width:1240px;margin:0 auto}
+h1,h2,h3{font-family:var(--serif);text-wrap:balance;margin:0;line-height:1.25}
+h1{font-size:clamp(28px,4.2vw,44px);font-weight:900;letter-spacing:.01em}
+h2{font-size:24px;font-weight:900}
+h3{font-size:17px;font-weight:600}
+p{margin:0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.eyebrow{font-size:12px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+header.top{display:grid;grid-template-columns:1fr auto;gap:24px;align-items:end;padding-block:32px 20px;border-bottom:1px solid var(--line)}
+header.top .lede{max-width:62ch;color:var(--muted);margin-top:10px}
+.findings{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid var(--line)}
+.finding{padding:16px 18px 18px 0;display:flex;flex-direction:column;gap:4px}
+.finding + .finding{padding-left:18px;border-left:1px solid var(--line)}
+.finding b{font-family:var(--mono);font-size:22px;font-weight:500}
+.finding span{font-size:13px;color:var(--muted)}
+section{padding-block:28px 8px}
+.sec-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}
+/* map */
+.map-wrap{position:relative;background:var(--sea);border:1px solid var(--line);border-radius:6px;overflow:hidden;touch-action:none}
+#map{display:block;width:100%;height:auto;cursor:grab}
+#map:active{cursor:grabbing}
+.country{fill:var(--land);stroke:var(--sea);stroke-width:.5}
+.country.rice{fill:var(--land-rice)}
+.country.rice:hover{fill:var(--land-hover)}
+.grat{fill:none;stroke:var(--line);stroke-width:.4}
+.marker circle{stroke:var(--surface);cursor:pointer}
+.marker.sel circle.dot{stroke:var(--ink)}
+.marker .halo{fill:none;stroke:var(--ink);opacity:0}
+.marker.sel .halo{opacity:.9}
+.map-tools{position:absolute;left:10px;top:10px;display:flex;flex-wrap:wrap;gap:6px;max-width:calc(100% - 20px)}
+.map-tools button,.seg button,.tabs button{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:3px 10px;border-radius:999px;cursor:pointer}
+.map-tools button:hover,.seg button:hover,.tabs button:hover{border-color:var(--muted)}
+.map-tools button[aria-pressed="true"],.seg button[aria-pressed="true"],.tabs button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--urea);outline-offset:2px}
+.legend{position:absolute;right:10px;bottom:10px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px;display:flex;flex-direction:column;gap:3px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.tip{position:absolute;pointer-events:none;z-index:5;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.18);padding:10px 12px;width:min(360px,calc(100% - 20px));font-size:13px;line-height:1.5}
+.tip h4{margin:0 0 2px;font-family:var(--serif);font-size:15px}
+.tip .s{border-top:1px solid var(--line);padding-top:6px;margin-top:6px}
+.tip .rec{font-weight:700}
+.cal{display:grid;grid-template-columns:repeat(12,1fr);gap:1px;margin:4px 0 2px;position:relative}
+.cal span{height:8px;background:var(--chip)}
+.cal span.on{background:var(--cr1)}
+.cal-lab{display:grid;grid-template-columns:repeat(12,1fr);font-size:10px;color:var(--muted);font-family:var(--mono)}
+/* detail */
+.detail{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:28px;margin-top:8px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:18px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px}
+.recipe{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px}
+.bar{display:flex;height:26px;border-radius:4px;overflow:hidden}
+.bar div{display:flex;align-items:center;justify-content:center;font-size:12px;font-family:var(--mono);color:#fff;white-space:nowrap;overflow:hidden}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:14px;margin-top:12px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.big{font-family:var(--mono);font-size:34px;font-weight:500;line-height:1.1}
+.pill{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;background:var(--chip);color:var(--ink);margin-right:4px}
+.pill.good{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.pill.bad{background:color-mix(in srgb,var(--bad) 18%,transparent);color:var(--bad)}
+.slider{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;margin-top:14px;font-size:14px}
+input[type=range]{width:100%;accent-color:var(--cr2)}
+.charts{display:flex;flex-direction:column;gap:18px;min-width:0}
+.chart-box{min-width:0}
+.chart-box svg{display:block;width:100%;height:auto;overflow:visible}
+.chart-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin:4px 0 0}
+.chart-legend i{display:inline-block;width:14px;height:8px;margin-right:5px;vertical-align:0}
+.axis text{fill:var(--muted);font-family:var(--mono);font-size:11px}
+.axis path,.axis line{stroke:var(--line)}
+.gridl line{stroke:var(--line);stroke-dasharray:2 3}
+.gridl path{display:none}
+.sens{width:100%;border-collapse:collapse;font-size:13px}
+.sens th,.sens td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.sens th{font-weight:500;color:var(--muted);font-size:12px}
+.sens td.n{text-align:right;font-family:var(--mono)}
+/* table */
+.tbl-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.tbl-tools input{font:inherit;padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);min-width:0;width:260px;max-width:100%}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table.all{border-collapse:collapse;width:100%;min-width:980px;font-size:13px}
+table.all th,table.all td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+table.all th{position:sticky;top:0;background:var(--surface);color:var(--muted);font-weight:500;font-size:12px}
+table.all td.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+table.all tbody tr{cursor:pointer}
+table.all tbody tr:hover{background:var(--chip)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+/* explorer */
+.explorer{display:grid;grid-template-columns:minmax(260px,320px) 1fr;gap:28px}
+.ctrl{display:flex;flex-direction:column;gap:14px}
+.ctrl label{font-size:13px;color:var(--muted);display:block;margin-bottom:4px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.d80{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:4px;margin-top:10px}
+.d80 div{background:var(--chip);border-radius:4px;padding:4px 6px;font-size:12px;line-height:1.3}
+.d80 div b{display:block;font-family:var(--mono);font-weight:500;font-size:13px}
+.d80 div.use{outline:1.5px solid var(--cr1)}
+/* methods */
+.methods{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.methods p,.methods li{max-width:68ch}
+.methods ol,.methods ul{padding-left:20px;margin:8px 0}
+.formula{font-family:var(--mono);font-size:13px;background:var(--chip);padding:10px 12px;border-radius:6px;overflow-x:auto;white-space:pre;margin:8px 0}
+.ptable{border-collapse:collapse;font-size:13px;width:100%}
+.ptable td,.ptable th{border-bottom:1px solid var(--line);padding:5px 8px;text-align:left}
+.ptable td.n{font-family:var(--mono);text-align:right}
+.refs li{font-size:13px;margin-bottom:4px}
+a{color:var(--urea)}
+.note{font-size:13px;color:var(--muted);margin-top:8px}
+@media (max-width:900px){
+  .detail,.explorer,.methods{grid-template-columns:1fr}
+  .findings{grid-template-columns:1fr 1fr}
+  .finding:nth-child(3){padding-left:0;border-left:0}
+  .finding:nth-child(n+3){border-top:1px solid var(--line)}
+  header.top{grid-template-columns:1fr}
+}
+@media (max-width:520px){
+  .legend{display:none}
+  .map-tools button{font-size:12px;padding:2px 8px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div>
+    <div class="eyebrow">包膜尿素 × 尿素掺混 · 移栽/播种时一次施用</div>
+    <h1>稻季控释配方地图</h1>
+    <p class="lede"><span id="nZ"></span> 个稻作区、<span id="nS"></span> 个稻季。每个稻季都用当地气温把 25 °C 静水控释期换算成田间实际释放，再和该季水稻的吸氮进程逐日比对，求出“全季不断顿、总氮量最少”的掺混方案。鼠标放在地图圆点上查看，点击看完整曲线。</p>
+  </div>
+  <div class="muted" style="font-size:13px;text-align:right">模型版本 0.1 · 参数待田间标定</div>
+</header>
+
+<div class="findings" id="findings"></div>
+
+<section>
+  <div class="sec-head">
+    <h2>全球稻作模式</h2>
+    <span class="muted" style="font-size:13px">滚轮或双指缩放 · 拖动平移 · 圆点颜色＝一年种几季</span>
+  </div>
+  <div class="map-wrap" id="mapWrap">
+    <svg id="map" role="img" aria-label="全球水稻种植分区地图"></svg>
+    <div class="map-tools" id="regionBtns"></div>
+    <div class="legend">
+      <div><i style="background:var(--single)"></i>一季稻</div>
+      <div><i style="background:var(--double)"></i>两季稻</div>
+      <div><i style="background:var(--triple)"></i>三季稻</div>
+    </div>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+</section>
+
+<section id="detailSec">
+  <div class="sec-head">
+    <div>
+      <div class="eyebrow" id="dCountry"></div>
+      <h2 id="dTitle"></h2>
+    </div>
+    <span class="muted" id="dStation" style="font-size:13px"></span>
+  </div>
+  <div class="tabs" id="dTabs" role="tablist"></div>
+  <div class="detail">
+    <div class="panel" id="dPanel"></div>
+    <div class="charts">
+      <div class="chart-box">
+        <h3>累计供氮与需氮（kg N/ha）</h3>
+        <svg id="c1"></svg>
+        <div class="chart-legend" id="c1leg"></div>
+      </div>
+      <div class="chart-box">
+        <h3>土壤中肥料来源的有效氮库</h3>
+        <svg id="c2"></svg>
+        <div class="chart-legend">
+          <span><i style="background:var(--pool);opacity:.5"></i>有效氮库</span>
+          <span><i style="background:var(--floor);height:2px"></i>“管饱”下限（分蘖浓度或未来 7 天需求）</span>
+          <span><i style="background:var(--temp);height:2px;opacity:.5"></i>田面水温（右轴）</span>
+        </div>
+      </div>
+      <div class="chart-box">
+        <h3>参数敏感性</h3>
+        <table class="sens" id="sens"></table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>全部稻季配方表</h2>
+    <div class="tbl-tools">
+      <input id="q" type="search" placeholder="筛选：国家、地区、季别、配方…" aria-label="筛选配方表">
+      <span class="muted" id="qCount" style="font-size:13px"></span>
+    </div>
+  </div>
+  <div class="scroll" style="max-height:520px">
+    <table class="all" id="allTbl">
+      <thead><tr>
+        <th>国家</th><th>稻作区</th><th>季别</th><th>品种类型</th><th>方式</th><th>施肥日</th><th class="n">天数</th><th class="n">产量 t/ha</th>
+        <th>推荐配方（按 N 计）</th><th class="n">总 N</th><th class="n">产品 kg/ha</th><th class="n">三次分施尿素 N</th><th class="n">当地常规 N</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="note">总 N、分施尿素 N 都是同一模型、同一“管饱”标准下算出的最少用量；当地常规 N 是文献与调查中的约数，仅作对照。产品量按包膜尿素含 N 42%、尿素含 N 46% 折算。</p>
+</section>
+
+<section>
+  <div class="sec-head">
+    <h2>温度—释放模型</h2>
+    <span class="muted" style="font-size:13px">拖动温度，看同一控释期在不同地区实际能释放多久</span>
+  </div>
+  <div class="explorer">
+    <div class="ctrl">
+      <div>
+        <label for="exT">恒定田面水温：<b class="num" id="exTv"></b></label>
+        <input id="exT" type="range" min="12" max="34" step="1" value="28">
+      </div>
+      <div>
+        <label>表观活化能 Ea（kJ/mol）</label>
+        <div class="seg" id="exEa"></div>
+      </div>
+      <div>
+        <label>曲线形状 β（1＝一级动力学，越大滞后越明显）</label>
+        <div class="seg" id="exB"></div>
+      </div>
+      <p class="note">土壤系数 f<sub>soil</sub>=0.90，初期溶出 f<sub>0</sub>=3%。下方方块是各控释期在该温度下实际达到 80% 释放的天数，描金边的是本图谱配方用到的档位。</p>
+    </div>
+    <div class="chart-box">
+      <svg id="c3"></svg>
+      <div class="chart-legend" id="c3leg"></div>
+      <div class="d80" id="d80"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><h2>方法、参数与需要您实测的数据</h2></div>
+  <div class="methods">
+    <div>
+      <h3>1. 释放的温度模型</h3>
+      <p>控释期 D 按国标口径定义为 25 °C 静水中累计释放 80% 的天数。温度只改变释放速度，不改变曲线形状（Hara 2000），所以把逐日田面水温按 Arrhenius 方程折算成 25 °C 等效天数，再代入 25 °C 下的释放曲线：</p>
+      <div class="formula">a(T) = exp[ Ea/R · (1/298.15 − 1/(T+273.15)) ]
+τ(t) = f_soil · Σ a(T_d)             （25 °C 等效天数）
+F(τ) = f0 + (1−f0)·[1 − exp(−(τ/λ)^β)]
+λ    = D / [ln((1−f0)/0.2)]^(1/β)     （保证 F(D)=80%）</div>
+      <p>Ea 取 50 kJ/mol，相当于 20–30 °C 间 Q10≈2，与聚烯烃包膜尿素“每升温 10 °C 溶出加倍”的田间结果一致（Gandeza 1991）；实验室测得的聚合物包膜肥 Ea 为 37–46 kJ/mol（Du 2006），不同国产包膜尿素的 Q10 在 1.4–2.8 之间（Liu 2011）。所以敏感性表里同时给出 Ea=38 与 65 的最优配方。</p>
+      <h3 style="margin-top:18px">2. 水稻需氮模型</h3>
+      <p>作物累计吸氮比例是积温进度 x = GDD(t)/GDD(成熟) 的 S 形曲线（基温 10 °C，上限 30 °C），由两点标定：幼穗分化期与抽穗期的累计吸氮比例。直播稻前期比例下调 8 个百分点。总吸氮 = 目标产量 × 单位籽粒需氮量；土壤基础供氮（INS）按同一曲线扣除，剩余部分由肥料供给。</p>
+      <table class="ptable" style="margin-top:8px">
+        <tr><th>品种类型</th><th class="n">kg N / t 稻谷</th><th class="n">幼穗分化时</th><th class="n">抽穗时</th></tr>
+        <tbody id="cropTbl"></tbody>
+      </table>
+      <h3 style="margin-top:18px">3. 肥料氮库与优化</h3>
+      <div class="formula">库(t+1) = 库(t)·(1 − k_loss) + 当日释放 − 当日吸收/η
+约束（管饱）：库(t) ≥ max(分蘖期浓度下限, 未来 7 天需求)
+目标（不浪费）：总施氮量最小</div>
+      <p>对“尿素 + 至多 2 个控释期”的每个组合（30–360 天共 34 档）解一次线性规划，比例按 5% 取整后再求满足约束的最小总量。成熟时没释放完的氮、前期释放过早而损失的氮，都会自动计入总量。</p>
+    </div>
+    <div>
+      <h3>默认参数</h3>
+      <table class="ptable" id="pTbl" style="margin-top:8px"></table>
+      <h3 style="margin-top:18px">要把模型从“文献初值”变成“您的产品”，需要实测这些数据</h3>
+      <ol>
+        <li><b>每个控释期档位的 Ea 与 β</b>：15、20、25、30、35 °C 五个温度的静水释放曲线。拟合出的 β 比 Ea 更关键，它决定产品是“线性释放”还是“S 型”。</li>
+        <li><b>f<sub>soil</sub></b>：在代表性稻田埋网袋，每 7–10 天取样测剩余氮，同时记录 5 cm 土温。</li>
+        <li><b>各区 INS</b>：多点无氮区的地上部吸氮量。</li>
+        <li><b>k_loss 与 η</b>：用 <sup>15</sup>N 微区试验或氮素表观平衡标定；本版取值使三次分施尿素的回收率约为 35–45%，与亚洲稻田调查范围相当。</li>
+        <li><b>气温</b>：本版用各站月均温插值；正式版应改用 ERA5 或 NASA POWER 近 20 年逐日数据，并按年份逐一检验。</li>
+      </ol>
+      <h3 style="margin-top:18px">局限</h3>
+      <ul>
+        <li>种植日历、产量、INS、当地常规施氮量取自文献与公开统计的代表值，同一分区内品种、土壤差别很大。</li>
+        <li>旱直播（美国中南部、巴西、澳洲）播后有约 30 天是旱地，包膜释放与氮损失都和淹水期不同，模型只用较高的损失率粗略处理。</li>
+        <li>只计算氮。磷、钾请按土壤测试一次基施，可一并掺入。</li>
+        <li>欧盟《肥料产品法规》(EU) 2019/1009 对包膜聚合物的可降解性设有期限要求，进入欧洲市场前需确认合规。</li>
+      </ul>
+      <h3 style="margin-top:18px">文献</h3>
+      <ol class="refs">
+        <li>Gandeza et al. 1991. <a href="https://consensus.app/papers/details/4272983ef1f152748b2f6ab05577724b/" target="_blank" rel="noopener">Simulation of crop response to polyolefin-coated urea I: field dissolution</a>. SSSAJ.</li>
+        <li>Du, Zhou &amp; Shaviv 2006. <a href="https://consensus.app/papers/details/9196b693f08c58049344b53f26ecfe3c/" target="_blank" rel="noopener">Release characteristics of nutrients from polymer-coated compound CRF</a>. J Polym Environ.</li>
+        <li>Hara 2000. <a href="https://consensus.app/papers/details/8935f30f8014519f899c2fdea5621b2e/" target="_blank" rel="noopener">Estimation of nitrogen release from coated urea using the Richards function</a>. Soil Sci Plant Nutr.</li>
+        <li>刘俊松 2011. <a href="https://consensus.app/papers/details/bcf7939d8ac3592ab0ba32d3b98d9d29/" target="_blank" rel="noopener">包膜尿素氮素释放特性研究</a>. 西南师范大学学报.</li>
+        <li>Ransom et al. 2020. <a href="https://consensus.app/papers/details/bf1fcd9b709952e09000b97aeb0ca038/" target="_blank" rel="noopener">N release rates from slow- and controlled-release fertilizers influenced by placement and temperature</a>. PLoS ONE.</li>
+        <li>Laborte et al. 2017. <a href="https://www.nature.com/articles/sdata201774" target="_blank" rel="noopener">RiceAtlas, a spatial database of global rice calendars and production</a>. Scientific Data.</li>
+        <li>Witt, Dobermann et al. 1999. <a href="https://www.sciencedirect.com/science/article/abs/pii/S0378429099000313" target="_blank" rel="noopener">Internal nutrient efficiencies of irrigated lowland rice in tropical and subtropical Asia</a>. Field Crops Res.</li>
+        <li>Zhang et al. 2022. <a href="https://consensus.app/papers/details/36a234488b7150d2a24005c9ade502ed/" target="_blank" rel="noopener">Can controlled-release urea replace the split application of normal urea in China? A meta-analysis</a>. Field Crops Res.</li>
+        <li>Yang et al. 2025. <a href="https://consensus.app/papers/details/87032d79b14a525db7ba0c5951176284/" target="_blank" rel="noopener">Co-benefits of combined use of controlled-release urea and conventional urea in rice</a>. Food Energy Secur.</li>
+        <li>Cheng et al. 2022. <a href="https://consensus.app/papers/details/eab62d20d76e5237ae8a4aae32db0db8/" target="_blank" rel="noopener">CRU formula and conventional urea ratio for direct-seeded rice</a>. Agriculture.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script>
+const DATA = /*__DATA__*/null;
+const WORLD = /*__WORLD__*/null;
+const P = DATA.params.P;
+const CROPC = {single:"var(--single)",double:"var(--double)",triple:"var(--triple)"};
+const CROPN = {single:"一季",double:"两季",triple:"三季"};
+const COMP_COLORS = ["var(--cr1)","var(--cr2)","var(--cr3)"];
+const MDAYS=[0,31,59,90,120,151,181,212,243,273,304,334];
+const SEASONS=[]; DATA.zones.forEach(z=>z.seasons.forEach(s=>SEASONS.push({z,s})));
+const $=s=>document.querySelector(s);
+const fmtDate=doy=>{doy=((doy%365)+365)%365;let m=11;while(MDAYS[m]>doy)m--;return `${m+1}月${doy-MDAYS[m]+1}日`;};
+const compName=k=>k==="urea"?"尿素":`CR${k}`;
+
+/* ---------- findings ---------- */
+(function(){
+  const used = new Set(); SEASONS.forEach(({s})=>s.rec.forEach(([k])=>{if(k!=="urea")used.add(+k)}));
+  const u=[...used].sort((a,b)=>a-b);
+  const ureaShare=SEASONS.map(({s})=>(s.rec.find(r=>r[0]==="urea")||[0,0])[1]);
+  const save=SEASONS.map(({s})=>1-s.total/s.split_total);
+  const stype=SEASONS.map(({s})=>1-s.stype.total/s.total);
+  const med=a=>{a=[...a].sort((x,y)=>x-y);return a[Math.floor(a.length/2)]};
+  const items=[
+    [`CR${u[0]}–CR${u[u.length-1]}`,"水稻上用到的控释期范围；150 天以上的档位在稻田温度下释放不完"],
+    [`${Math.min(...ureaShare)}–${Math.max(...ureaShare)}%`,"最优配方中尿素所占比例，其余为 1–2 个相邻控释期"],
+    [`${Math.round(100*med(save))}%`,"与同样“管饱”的三次分施尿素相比，节省氮量（中位数）"],
+    [`${Math.round(100*med(stype))}%`,"若把释放曲线做成 S 型（β=2.5），还能再省的氮量（中位数）"],
+  ];
+  $("#findings").innerHTML=items.map(([b,t])=>`<div class="finding"><b>${b}</b><span>${t}</span></div>`).join("");
+})();
+
+/* ---------- map ---------- */
+const mapSvg=d3.select("#map"), tip=$("#tip"), wrap=$("#mapWrap");
+let W=1200,H=600, proj, path, gRoot, zoom, curK=1;
+const countries=topojson.feature(WORLD, WORLD.objects.countries).features;
+const zoneByCountry={}; DATA.zones.forEach(z=>(zoneByCountry[z.country]=zoneByCountry[z.country]||[]).push(z));
+const REGIONS=[["全球",null],["东亚",[[97,18],[145,50]]],["南亚",[[66,6],[97,33]]],["东南亚",[[92,-9],[126,23]]],["西亚与非洲",[[-20,-22],[60,38]]],["欧洲",[[-10,35],[42,48]]],["美洲",[[-125,-36],[-50,42]]],["大洋洲",[[112,-40],[155,-12]]]];
+let selZone=null, selSeason=0;
+
+function drawMap(){
+  W=wrap.clientWidth; H=Math.round(W*(W<600?0.62:0.5));
+  mapSvg.attr("viewBox",`0 0 ${W} ${H}`).attr("width",W).attr("height",H);
+  proj=d3.geoNaturalEarth1().fitExtent([[4,4],[W-4,H-4]],{type:"Sphere"});
+  path=d3.geoPath(proj);
+  mapSvg.selectAll("*").remove();
+  gRoot=mapSvg.append("g");
+  gRoot.append("path").datum(d3.geoGraticule10()).attr("class","grat").attr("d",path);
+  gRoot.append("g").selectAll("path").data(countries).join("path")
+    .attr("class",d=>"country"+(zoneByCountry[d.id]?" rice":"")).attr("d",path)
+    .on("mousemove",(e,d)=>{ if(!zoneByCountry[d.id]) return; showTip(e, countryTip(d)); })
+    .on("mouseleave",hideTip)
+    .on("click",(e,d)=>{ if(zoneByCountry[d.id]) selectZone(zoneByCountry[d.id][0].id,0,true); });
+  const mk=gRoot.append("g").selectAll("g").data(DATA.zones).join("g")
+    .attr("class","marker").attr("transform",d=>`translate(${proj([d.lon,d.lat])})`)
+    .on("mousemove",(e,d)=>showTip(e, zoneTip(d)))
+    .on("mouseleave",hideTip)
+    .on("click",(e,d)=>{ selectZone(d.id,0,true); });
+  mk.append("circle").attr("class","halo");
+  mk.append("circle").attr("class","dot").attr("fill",d=>CROPC[d.crop]);
+  zoom=d3.zoom().scaleExtent([1,10]).translateExtent([[0,0],[W,H]]).on("zoom",e=>{
+    curK=e.transform.k; gRoot.attr("transform",e.transform); sizeMarkers();
+  });
+  mapSvg.call(zoom);
+  sizeMarkers(); markSel();
+}
+function sizeMarkers(){
+  const r=Math.max(4, Math.min(7, W/170))/Math.sqrt(curK);
+  gRoot.selectAll(".marker .dot").attr("r",r).attr("stroke-width",1.5/curK);
+  gRoot.selectAll(".marker .halo").attr("r",r+4/curK).attr("stroke-width",1.5/curK);
+  gRoot.selectAll(".country").attr("stroke-width",.5/curK);
+  gRoot.selectAll(".grat").attr("stroke-width",.4/curK);
+}
+function markSel(){ gRoot && gRoot.selectAll(".marker").classed("sel",d=>selZone&&d.id===selZone.id).filter(d=>selZone&&d.id===selZone.id).raise(); }
+function zoomTo(box){
+  if(!box){ mapSvg.transition().duration(600).call(zoom.transform,d3.zoomIdentity); return; }
+  const [[x0,y0],[x1,y1]]=[proj(box[0]),proj(box[1])];
+  const dx=Math.abs(x1-x0), dy=Math.abs(y1-y0), cx=(x0+x1)/2, cy=(y0+y1)/2;
+  const k=Math.min(10, .92/Math.max(dx/W,dy/H));
+  mapSvg.transition().duration(700).call(zoom.transform,d3.zoomIdentity.translate(W/2-k*cx,H/2-k*cy).scale(k));
+}
+const rb=$("#regionBtns");
+REGIONS.forEach(([n,b],i)=>{const bt=document.createElement("button");bt.textContent=n;bt.setAttribute("aria-pressed",i===0);
+  bt.onclick=()=>{rb.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===bt));zoomTo(b);};rb.appendChild(bt);});
+
+function calStrip(s){
+  const on=new Array(12).fill(false);
+  for(let d=0; d<=s.days; d+=5){ const doy=(s.start_doy+d)%365; let m=11; while(MDAYS[m]>doy)m--; on[m]=true; }
+  return `<div class="cal">${on.map(o=>`<span class="${o?"on":""}"></span>`).join("")}</div>`;
+}
+const calLabels=`<div class="cal-lab">${[1,2,3,4,5,6,7,8,9,10,11,12].map(m=>`<span>${m}</span>`).join("")}</div>`;
+function zoneTip(z){
+  return `<h4>${z.name}</h4><div class="muted">${z.country_name} · ${CROPN[z.crop]}稻 · 代表站 ${z.station}</div>`+
+    z.seasons.map(s=>`<div class="s"><b>${s.name}</b> <span class="muted">${s.est_label}，${fmtDate(s.start_doy)} 施肥，${s.days} 天成熟</span>`+
+      calStrip(s)+calLabels+
+      `<div class="rec">${s.rec_str}</div><div><span class="num">${s.total}</span> kg N/ha · 约 <span class="num">${s.kg_product}</span> kg 产品/ha <span class="muted">（目标 ${s.Y} t/ha）</span></div></div>`).join("")+
+    `<div class="muted" style="margin-top:6px;font-size:12px">点击查看曲线与敏感性</div>`;
+}
+function countryTip(d){
+  const zs=zoneByCountry[d.id];
+  return `<h4>${DATA.countries[d.id]}</h4><div class="muted">${zs.length} 个稻作区：${zs.map(z=>z.name).join("、")}</div>`;
+}
+function showTip(e,html){
+  tip.innerHTML=html; tip.hidden=false;
+  const r=wrap.getBoundingClientRect(), tw=tip.offsetWidth, th=tip.offsetHeight;
+  let x=e.clientX-r.left+14, y=e.clientY-r.top+14;
+  if(x+tw>r.width-6) x=Math.max(6,e.clientX-r.left-tw-14);
+  if(y+th>r.height-6) y=Math.max(6,r.height-th-6);
+  tip.style.left=x+"px"; tip.style.top=y+"px";
+}
+function hideTip(){ tip.hidden=true; }
+
+/* ---------- detail ---------- */
+let yieldOverride=null;
+function selectZone(id, si, scroll){
+  selZone=DATA.zones.find(z=>z.id===id); selSeason=si||0; yieldOverride=null;
+  markSel(); renderDetail();
+  if(scroll) $("#detailSec").scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"});
+}
+function renderDetail(){
+  const z=selZone, s=z.seasons[selSeason];
+  $("#dCountry").textContent=`${z.country_name} · ${CROPN[z.crop]}稻`;
+  $("#dTitle").textContent=z.name;
+  $("#dStation").textContent=`代表站 ${z.station}（${z.lat.toFixed(1)}°, ${z.lon.toFixed(1)}°）`;
+  const tabs=$("#dTabs"); tabs.innerHTML="";
+  z.seasons.forEach((x,i)=>{const b=document.createElement("button");b.setAttribute("role","tab");b.textContent=x.name;b.setAttribute("aria-pressed",i===selSeason);
+    b.onclick=()=>{selSeason=i;yieldOverride=null;renderDetail();};tabs.appendChild(b);});
+  renderPanel(z,s); drawC1(s); drawC2(s); renderSens(s);
+}
+function scaled(s){
+  const Y=yieldOverride??s.Y;
+  const fd=Math.max(12, Y*s.nreq - s.INS);
+  const f=fd/s.fert_demand;
+  const total=Math.max(5, Math.round(s.total*f/5)*5);
+  return {Y,total,f,kg:Math.round(s.kg_product*f),kg_cr:Math.round(s.kg_cr*f),kg_u:Math.round(s.kg_urea*f),split:Math.round(s.split_total*f/5)*5};
+}
+function renderPanel(z,s){
+  const sc=scaled(s);
+  const bar=s.rec.map(([k,p],i)=>{const col=k==="urea"?"var(--urea)":COMP_COLORS[i-1]||"var(--cr2)";return `<div style="width:${p}%;background:${col}" title="${compName(k)} ${p}%">${p>=12?compName(k)+" "+p+"%":""}</div>`}).join("");
+  const saving=Math.round(100*(1-s.total/s.split_total));
+  const ureaAlone=s.rec.length===1;
+  $("#dPanel").innerHTML=`
+    <div class="muted" style="font-size:13px">${s.type_label} · ${s.est_label} · ${fmtDate(s.start_doy)} 施肥 · ${s.days} 天成熟</div>
+    ${calStrip(s)}${calLabels}
+    <div class="recipe">
+      <div class="eyebrow">推荐掺混（按氮计）</div>
+      <div style="font-size:18px;font-weight:700">${s.rec_str}</div>
+      <div class="bar">${bar}</div>
+    </div>
+    <div style="display:flex;gap:18px;align-items:flex-end;margin-top:12px;flex-wrap:wrap">
+      <div><div class="big" id="bigN">${sc.total}</div><div class="muted" style="font-size:12px">kg N/ha，一次基施</div></div>
+      <div><div class="big" style="font-size:24px" id="bigKg">${sc.kg}</div><div class="muted" style="font-size:12px">kg 产品/ha</div></div>
+    </div>
+    <div class="slider">
+      <label for="yS" class="muted">目标产量</label>
+      <input id="yS" type="range" min="${Math.max(2,(s.Y*0.6)).toFixed(1)}" max="${(s.Y*1.3).toFixed(1)}" step="0.1" value="${sc.Y}">
+      <span class="num" id="yV">${sc.Y.toFixed(1)} t</span>
+    </div>
+    <dl class="kv">
+      <dt>其中包膜尿素 / 尿素</dt><dd id="kvKg">${sc.kg_cr} / ${sc.kg_u} kg</dd>
+      <dt>同标准三次分施尿素</dt><dd id="kvSplit">${sc.split} kg N</dd>
+      <dt>当地常规施氮（约）</dt><dd>${s.FN} kg N</dd>
+      <dt>作物总吸氮 / 土壤供氮</dt><dd>${Math.round(sc.Y*s.nreq)} / ${s.INS} kg</dd>
+      <dt>模拟氮肥回收率</dt><dd>${Math.round(100*s.RE)}%</dd>
+      <dt>成熟时未释放</dt><dd>${s.unreleased}%</dd>
+      <dt>季均气温（最低–最高）</dt><dd>${s.Tmean} °C（${s.Tmin}–${s.Tmax}）</dd>
+      <dt>全季 25 °C 等效天数</dt><dd>${s.tau_end} 天</dd>
+    </dl>
+    <div style="margin-top:12px">
+      <span class="pill ${saving>=10?"good":saving>=5?"warn":""}">比分施尿素省 ${saving}%</span>
+      ${s.simple_str!==s.rec_str?`<span class="pill">单一控释期方案：${s.simple_str}，${s.simple_total} kg N</span>`:`<span class="pill">只需 1 个控释期</span>`}
+    </div>
+    ${s.note?`<p class="note">${s.note}</p>`:""}
+  `;
+  const yS=$("#yS");
+  yS.oninput=()=>{yieldOverride=+yS.value;const c=scaled(s);$("#yV").textContent=c.Y.toFixed(1)+" t";$("#bigN").textContent=c.total;$("#bigKg").textContent=c.kg;$("#kvKg").textContent=`${c.kg_cr} / ${c.kg_u} kg`;$("#kvSplit").textContent=`${c.split} kg N`;drawC1(s);drawC2(s);};
+}
+function chartDims(svgSel, h){
+  const w=Math.max(300, svgSel.node().parentNode.clientWidth);
+  svgSel.attr("viewBox",`0 0 ${w} ${h}`); svgSel.selectAll("*").remove();
+  return {w,h};
+}
+function stageLines(g,s,x,h,m){
+  [[s.tPI,"幼穗分化"],[s.tH,"抽穗"],[s.days,"成熟"]].forEach(([t,l])=>{
+    g.append("line").attr("x1",x(t)).attr("x2",x(t)).attr("y1",m.t).attr("y2",h-m.b).attr("stroke","var(--muted)").attr("stroke-dasharray","3 3").attr("stroke-width",1);
+    g.append("text").attr("x",x(t)-4).attr("y",m.t+10).attr("text-anchor","end").attr("fill","var(--muted)").attr("font-size",11).text(l);
+  });
+}
+function drawC1(s){
+  const svg=d3.select("#c1"), {w,h}=chartDims(svg,300), m={l:44,r:12,t:10,b:30};
+  const f=scaled(s).f, ser=s.series, t=ser.t;
+  const keys=Object.keys(ser.comps);
+  const stacked=t.map((_,i)=>{let acc=0;return keys.map(k=>{const y0=acc;acc+=ser.comps[k][i]*f;return [y0,acc];});});
+  const ymax=d3.max([d3.max(stacked,r=>r[r.length-1][1]), d3.max(ser.crop)*f*1.0, d3.max(ser.demand)*f])*1.08;
+  const x=d3.scaleLinear([0,s.days],[m.l,w-m.r]), y=d3.scaleLinear([0,ymax],[h-m.b,m.t]).nice();
+  svg.append("g").attr("class","gridl").attr("transform",`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickSize(-(w-m.l-m.r)).tickFormat(""));
+  keys.forEach((k,j)=>{
+    const col=k==="尿素"?"var(--urea)":COMP_COLORS[j-(keys[0]==="尿素"?1:0)];
+    svg.append("path").attr("fill",col).attr("fill-opacity",.75)
+      .attr("d",d3.area().x((_,i)=>x(t[i])).y0((_,i)=>y(stacked[i][j][0])).y1((_,i)=>y(stacked[i][j][1]))(t));
+  });
+  svg.append("path").attr("fill","none").attr("stroke","var(--crop)").attr("stroke-width",1.5).attr("stroke-dasharray","5 4")
+    .attr("d",d3.line().x((_,i)=>x(t[i])).y((_,i)=>y(ser.crop[i]*(yieldOverride?((yieldOverride*s.nreq)/(s.Y*s.nreq)):1)))(t));
+  svg.append("path").attr("fill","none").attr("stroke","var(--demand)").attr("stroke-width",2.2)
+    .attr("d",d3.line().x((_,i)=>x(t[i])).y((_,i)=>y(ser.demand[i]*f))(t));
+  stageLines(svg,s,x,h,m);
+  svg.append("g").attr("class","axis").attr("transform",`translate(0,${h-m.b})`).call(d3.axisBottom(x).ticks(Math.min(10,w/70)).tickFormat(d=>d+"d"));
+  svg.append("g").attr("class","axis").attr("transform",`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5));
+  $("#c1leg").innerHTML=keys.map((k,j)=>`<span><i style="background:${k==="尿素"?"var(--urea)":COMP_COLORS[j-(keys[0]==="尿素"?1:0)]};opacity:.75"></i>${k} 累计释放</span>`).join("")+
+    `<span><i style="background:var(--demand);height:2px"></i>作物需从肥料吸收的氮</span><span><i style="background:var(--crop);height:2px"></i>作物总吸氮（含土壤氮）</span>`;
+}
+function drawC2(s){
+  const svg=d3.select("#c2"), {w,h}=chartDims(svg,200), m={l:44,r:40,t:10,b:30};
+  const f=scaled(s).f, ser=s.series, t=ser.t;
+  const ymax=d3.max([d3.max(ser.pool),d3.max(ser.floor)])*f*1.1;
+  const x=d3.scaleLinear([0,s.days],[m.l,w-m.r]), y=d3.scaleLinear([0,ymax],[h-m.b,m.t]).nice();
+  const yT=d3.scaleLinear([Math.floor(d3.min(ser.T))-2,Math.ceil(d3.max(ser.T))+2],[h-m.b,m.t]);
+  svg.append("g").attr("class","gridl").attr("transform",`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickSize(-(w-m.l-m.r)).tickFormat(""));
+  svg.append("path").attr("fill","var(--pool)").attr("fill-opacity",.45).attr("stroke","var(--pool)").attr("stroke-width",1.5)
+    .attr("d",d3.area().x((_,i)=>x(t[i])).y0(y(0)).y1((_,i)=>y(ser.pool[i]*f))(t));
+  svg.append("path").attr("fill","none").attr("stroke","var(--floor)").attr("stroke-width",1.6).attr("stroke-dasharray","4 3")
+    .attr("d",d3.line().x((_,i)=>x(t[i])).y((_,i)=>y(ser.floor[i]*f))(t));
+  svg.append("path").attr("fill","none").attr("stroke","var(--temp)").attr("stroke-opacity",.5).attr("stroke-width",1.2)
+    .attr("d",d3.line().x((_,i)=>x(t[i])).y((_,i)=>yT(ser.T[i]))(t));
+  stageLines(svg,s,x,h,m);
+  svg.append("g").attr("class","axis").attr("transform",`translate(0,${h-m.b})`).call(d3.axisBottom(x).ticks(Math.min(10,w/70)).tickFormat(d=>d+"d"));
+  svg.append("g").attr("class","axis").attr("transform",`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4));
+  svg.append("g").attr("class","axis").attr("transform",`translate(${w-m.r},0)`).call(d3.axisRight(yT).ticks(4).tickFormat(d=>d+"°"));
+}
+function renderSens(s){
+  const r=s.robust, ok=v=>v.short_days===0;
+  $("#sens").innerHTML=`
+   <tr><th>情景</th><th>最优配方</th><th class="n">总 N</th></tr>
+   <tr><td>基准（Ea 50，β 1.3）</td><td>${s.rec_str}</td><td class="n">${s.total}</td></tr>
+   <tr><td>实测 Ea 偏低（38 kJ/mol）</td><td>${s.sens["38"].rec_str}</td><td class="n">${s.sens["38"].total}</td></tr>
+   <tr><td>实测 Ea 偏高（65 kJ/mol）</td><td>${s.sens["65"].rec_str}</td><td class="n">${s.sens["65"].total}</td></tr>
+   <tr><td>产品改为 S 型（β 2.5）</td><td>${s.stype.rec_str}</td><td class="n">${s.stype.total}</td></tr>
+   <tr><td>基准配方遇偏冷年（−1.5 °C）</td><td colspan="2"><span class="pill ${ok(r["-1.5"])?"good":"bad"}">${ok(r["-1.5"])?"不断顿":"断顿 "+r["-1.5"].short_days+" 天"}</span> 成熟时未释放 ${r["-1.5"].unreleased_pct.toFixed(0)}%</td></tr>
+   <tr><td>基准配方遇偏暖年（+1.5 °C）</td><td colspan="2"><span class="pill ${ok(r["1.5"])?"good":"bad"}">${ok(r["1.5"])?"不断顿":"断顿 "+r["1.5"].short_days+" 天"}</span> 成熟时未释放 ${r["1.5"].unreleased_pct.toFixed(0)}%</td></tr>`;
+}
+
+/* ---------- table ---------- */
+const tbody=$("#allTbl tbody");
+function renderTable(){
+  const q=$("#q").value.trim().toLowerCase(); let n=0;
+  tbody.innerHTML="";
+  SEASONS.forEach(({z,s},i)=>{
+    const hay=(z.country_name+z.name+s.name+s.type_label+s.est_label+s.rec_str).toLowerCase();
+    if(q && !hay.includes(q)) return; n++;
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><span class="dot" style="background:${CROPC[z.crop]}"></span>${z.country_name}</td><td>${z.name}</td><td>${s.name}</td><td>${s.type_label}</td><td>${s.est_label}</td><td>${fmtDate(s.start_doy)}</td><td class="n">${s.days}</td><td class="n">${s.Y}</td><td>${s.rec_str}</td><td class="n"><b>${s.total}</b></td><td class="n">${s.kg_product}</td><td class="n">${s.split_total}</td><td class="n">${s.FN}</td>`;
+    tr.onclick=()=>selectZone(z.id,s.idx,true);
+    tbody.appendChild(tr);
+  });
+  $("#qCount").textContent=`${n} / ${SEASONS.length} 个稻季`;
+}
+$("#q").addEventListener("input",renderTable);
+
+/* ---------- explorer ---------- */
+const USED=new Set(); SEASONS.forEach(({s})=>s.rec.forEach(([k])=>{if(k!=="urea")USED.add(+k)}));
+let exEa=P.Ea, exB=P.beta;
+const arr=(T,Ea)=>Math.exp(Ea*1000/8.314*(1/298.15-1/(T+273.15)));
+const lamF=(D,f0,b)=>D/Math.pow(Math.log((1-f0)/0.2),1/b);
+const rel=(tau,D,b)=>P.f0+(1-P.f0)*(1-Math.exp(-Math.pow(Math.max(tau,0)/lamF(D,P.f0,b),b)));
+function seg(el,vals,cur,fmt,on){
+  el.innerHTML=""; vals.forEach(v=>{const b=document.createElement("button");b.textContent=fmt(v);b.setAttribute("aria-pressed",v===cur);b.onclick=()=>{on(v);el.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b));drawC3();};el.appendChild(b);});
+}
+seg($("#exEa"),[38,50,65],exEa,v=>v,v=>exEa=v);
+seg($("#exB"),[1.0,1.3,2.0,2.5],exB,v=>v.toFixed(1),v=>exB=v);
+$("#exT").addEventListener("input",drawC3);
+function drawC3(){
+  const T=+$("#exT").value; $("#exTv").textContent=T+" °C";
+  const svg=d3.select("#c3"), {w,h}=chartDims(svg,260), m={l:40,r:14,t:10,b:30};
+  const a=arr(T,exEa)*P.f_soil, show=[30,60,90,120,180,360], tmax=240;
+  const x=d3.scaleLinear([0,tmax],[m.l,w-m.r]), y=d3.scaleLinear([0,100],[h-m.b,m.t]);
+  const cols=d3.scaleSequential([0,show.length-1],d3.interpolateRgb("#E6B865","#6B3F0C"));
+  svg.append("g").attr("class","gridl").attr("transform",`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickSize(-(w-m.l-m.r)).tickFormat(""));
+  svg.append("line").attr("x1",m.l).attr("x2",w-m.r).attr("y1",y(80)).attr("y2",y(80)).attr("stroke","var(--floor)").attr("stroke-dasharray","4 3");
+  svg.append("text").attr("x",w-m.r).attr("y",y(80)-4).attr("text-anchor","end").attr("font-size",11).attr("fill","var(--floor)").text("80%");
+  const days=d3.range(0,tmax+1,2);
+  show.forEach((D,i)=>{
+    svg.append("path").attr("fill","none").attr("stroke",cols(i)).attr("stroke-width",2)
+      .attr("d",d3.line().x(d=>x(d)).y(d=>y(100*rel(a*d,D,exB)))(days));
+  });
+  svg.append("g").attr("class","axis").attr("transform",`translate(0,${h-m.b})`).call(d3.axisBottom(x).ticks(8).tickFormat(d=>d+"d"));
+  svg.append("g").attr("class","axis").attr("transform",`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickFormat(d=>d+"%"));
+  $("#c3leg").innerHTML=show.map((D,i)=>`<span><i style="background:${cols(i)}"></i>CR${D}</span>`).join("");
+  $("#d80").innerHTML=DATA.params.PRODUCTS.map(D=>`<div class="${USED.has(D)?"use":""}">CR${D}<b>${Math.round(D/a)} 天</b></div>`).join("");
+}
+
+/* ---------- params ---------- */
+$("#cropTbl").innerHTML=Object.values(DATA.params.CROP).map(c=>`<tr><td>${c.label}</td><td class="n">${c.nreq}</td><td class="n">${Math.round(c.pPI*100)}%</td><td class="n">${Math.round(c.pH*100)}%</td></tr>`).join("");
+const PL=[["Ea","表观活化能 kJ/mol"],["beta","释放曲线形状 β"],["f0","初期溶出比例"],["f_soil","淹水土壤释放系数"],["paddy_dT","田面水温 − 气温 °C"],["urea_loss","基施尿素初始损失"],["k_loss","有效氮库日损失率"],["eta","根系最大截获效率"],["buffer","库中保有未来需求天数"],["early_pool","分蘖期库存下限（占肥料需供量）"]];
+$("#pTbl").innerHTML=PL.map(([k,l])=>`<tr><td>${l}</td><td class="n">${P[k]}</td></tr>`).join("")+`<tr><td>旱直播损失率倍数</td><td class="n">${DATA.params.EST.DSR.k_mult}</td></tr>`;
+
+/* ---------- boot ---------- */
+$("#nZ").textContent=DATA.zones.length; $("#nS").textContent=SEASONS.length;
+drawMap(); renderTable(); drawC3();
+selectZone("cn-myz",0,false);
+let rt; window.addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(()=>{const k=curK;drawMap();renderDetail();drawC3();},150);});
+</script>
