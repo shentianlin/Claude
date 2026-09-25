@@ -201,8 +201,20 @@ def solve_lp(G, need, keys, cost):
     return r.x
 
 
+ROBUST_DT = (-1.5, 0.0, 1.5)   # 冷年、常年、暖年同时满足“管饱”
+
+
+def robust_basis(ss, Ea=None, f_soil=None, prm=P):
+    """把三种年份的约束纵向拼接：同一配方须在冷年、常年、暖年都不断顿。"""
+    parts = [season_basis(ss, Ea, f_soil, dT=dT, prm=prm) for dT in ROBUST_DT]
+    G = {k: np.concatenate([p[0][k] for p in parts]) for k in parts[0][0]}
+    need = np.concatenate([p[1] for p in parts])
+    _, _, Fend, tau = parts[ROBUST_DT.index(0.0)]
+    return G, need, Fend, tau
+
+
 def optimize(ss, Ea=None, f_soil=None, max_cr=2, prm=P, cost_cr=1.02):
-    G, need, Fend, tau = season_basis(ss, Ea, f_soil, prm=prm)
+    G, need, Fend, tau = robust_basis(ss, Ea, f_soil, prm=prm)
     L = ss["L"]
     cands = [D for D in PRODUCTS if Fend[D] >= 0.30]
     cost = {"urea": 1.0, **{D: cost_cr for D in PRODUCTS}}

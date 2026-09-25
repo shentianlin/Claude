@@ -31,20 +31,26 @@ def best_recipe(ss, Ea=None, beta=None):
     return dict(rec=r2, total=t2, simple=r1, simple_total=t1, ideal=ideal), G, need, Fend, tau
 
 
-def split_urea(ss, need, mode):
-    """对照：尿素分次施。返青前施用的地区按 40/30/30（返青、拔节、旗叶）；其余按基肥 50% + 拔节 50%。"""
-    k, n = ss["k_loss"], ss["n"]
+def split_urea(ss, mode):
+    """对照：尿素分次施（同样要求冷年、常年、暖年都不断顿）。
+    返青前施用的地区按 40/30/30（返青、拔节、旗叶）；其余按基肥 50% + 拔节 50%。"""
+    n = ss["n"]
     if mode == "LW":
         fr, days = (0.4, 0.3, 0.3), [0, ss["tPI"], min(ss["tPI"] + 20, ss["tH"])]
     else:
         fr, days = (0.5, 0.5), [0, ss["tPI"]]
     base = M.urea_increment(n)
-    shape = np.zeros(n)
-    for f, d0 in zip(fr, days):
-        inc = np.zeros(n)
-        inc[d0:] = base[: n - d0]
-        shape += f * M.decay_conv(inc, k)
-    return 5 * math.ceil(float(np.max(need / np.maximum(shape, 1e-9))) / 5), days
+    worst = 0.0
+    for dT in M.ROBUST_DT:
+        _, need, _, _ = M.season_basis(ss, dT=dT)
+        k = M.loss_rate(ss["Tpaddy"] + dT, M.P["k_loss"], ss["wet"])
+        shape = np.zeros(n)
+        for f, d0 in zip(fr, days):
+            inc = np.zeros(n)
+            inc[d0:] = base[: n - d0]
+            shape += f * M.decay_conv(inc, k)
+        worst = max(worst, float(np.max(need / np.maximum(shape, 1e-9))))
+    return 5 * math.ceil(worst / 5), days
 
 
 def run_season(args):
@@ -53,8 +59,9 @@ def run_season(args):
     s = z["seasons"][si]
     ss = M.season_setup(z, s)
     main, G, need, Fend, tau = best_recipe(ss)
-    sim = M.simulate(ss, main["rec"], main["total"], G, need, Fend)
-    split_total, split_days = split_urea(ss, need, s["mode"])
+    G0, need0, _, _ = M.season_basis(ss)
+    sim = M.simulate(ss, main["rec"], main["total"], G0, need0, Fend)
+    split_total, split_days = split_urea(ss, s["mode"])
 
     # 活化能敏感性：若实测 Ea 偏低/偏高，最优配方如何变化
     sens = {}
