@@ -1,0 +1,13 @@
+{
+  "source_commit": "11cd6a743c5f4f48049115b8f3df0e08244300f9",
+  "source_dirty_files": [],
+  "built_at_utc": "2026-09-27T09:45:45Z",
+  "python": "3.11.15",
+  "numpy": "2.4.6",
+  "scipy": "1.17.1",
+  "params_file": "params.toml",
+  "outputs": {
+    "index.html": "7f0998644ad11e30db6dbbf2ee16c41d23149c4d18f691ee8b576f41112eb673",
+    "data.json": "e53607e07f1d6f210517b0f4fdf60e026b6df3e1297fa86c972abff2ca7ac17f"
+  }
+}
