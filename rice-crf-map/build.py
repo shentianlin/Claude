@@ -1,99 +1,88 @@
-"""计算全部分区、季别的推荐配方，输出 data.json，并生成地图页面 index.html。"""
+"""计算全部稻作区、稻季的推荐配方，输出 data.json、交互地图 index.html 和构建记录 BUILD_INFO.json。
+
+用法
+    python build.py            # 用全部 CPU 核并行计算
+    python build.py --jobs 1   # 单进程（调试用）
+"""
+import argparse
+import hashlib
 import json
-import math
+import os
+import platform
+import subprocess
 import sys
+from datetime import datetime, timezone
 from multiprocessing import Pool
 from pathlib import Path
 
 import numpy as np
+import scipy
 
-import model as M
-from zones import ZONES, COUNTRIES
+from crfmap.data import COUNTRIES, ZONES
+from crfmap.demand import season_setup
+from crfmap.optimize import best_recipe, buffer_need, season_basis, simulate, split_urea
+from crfmap.params import CROP, EST, P, PARAMS_FILE, PRODUCTS, SCEN
+from crfmap.release import cum_tau, release, urea_increment
 
-HERE = Path(__file__).parent
+HERE = Path(__file__).resolve().parent
+COMMON = HERE.parent / "common"          # 环境效应模块（与小麦版共用）
 
 
 def rec_str(rec):
     return " + ".join(("尿素" if k == "urea" else f"CR{k}") + f" {p}%" for k, p in rec)
 
 
-def best_recipe(ss, Ea=None, beta=None):
-    if beta is not None:
-        M.P["beta"] = beta
-    best, best1, ideal, G, need, Fend, tau = M.optimize(ss, Ea=Ea)
-    r2, t2 = M.round_recipe(best[1], best[2], G, need)
-    r1, t1 = M.round_recipe(best1[1], best1[2], G, need)
-    # 生产上组分越少越好：单一控释期的方案多用不超过 3% 的氮就选它
-    if t1 <= t2 * 1.03:
-        r2, t2 = r1, t1
-    if beta is not None:
-        M.P["beta"] = 1.3
-    return dict(rec=r2, total=t2, simple=r1, simple_total=t1, ideal=ideal), G, need, Fend, tau
-
-
-def split_urea(ss, need, fr=(0.4, 0.3, 0.3)):
-    k, n = ss["k_loss"], ss["n"]
-    days = [0, max(10, ss["tPI"] - 25), ss["tPI"]]
-    base = M.urea_increment(n)
-    shape = np.zeros(n)
-    for f, d0 in zip(fr, days):
-        inc = np.zeros(n)
-        inc[d0:] = base[: n - d0]
-        shape += f * M.decay_conv(inc, k)
-    return 5 * math.ceil(float(np.max(need / np.maximum(shape, 1e-9))) / 5), days
-
-
 def run_season(args):
     zi, si = args
     z = ZONES[zi]
     s = z["seasons"][si]
-    ss = M.season_setup(z, s)
+    ss = season_setup(z, s)
     main, G, need, Fend, tau = best_recipe(ss)
-    sim = M.simulate(ss, main["rec"], main["total"], G, need, Fend)
+    sim = simulate(ss, main["rec"], main["total"], G, need, Fend)
     split_total, split_days = split_urea(ss, need)
 
     # 活化能敏感性：若实测 Ea 偏低/偏高，最优配方如何变化
     sens = {}
-    for Ea in (38, 65):
+    for Ea in SCEN["ea_sensitivity"]:
         r, *_ = best_recipe(ss, Ea=Ea)
         sens[str(Ea)] = dict(rec=r["rec"], total=r["total"])
     # 形状敏感性：若做成 S 型（有滞后期）产品
-    rS, *_ = best_recipe(ss, beta=2.5)
-    # 年际温度波动：配方不变，释放随温度 ±1.5 °C 变化
+    rS, *_ = best_recipe(ss, beta=SCEN["stype_beta"])
+    # 年际温度波动：配方不变，释放随温度变化
     robust = {}
-    for dT in (-1.5, 1.5):
-        G2, need2, Fend2, _ = M.season_basis(ss, dT=dT)
+    for dT in SCEN["robust_dT"]:
+        G2, need2, Fend2, _ = season_basis(ss, dT=dT)
         sup = sum(main["total"] * p / 100 * G2[k] for k, p in main["rec"])
         margin = sup - need2
         # 需求侧的“缓冲量”不算断顿：只看库是否低于 0
-        buf = M.buffer_need(ss)
+        buf = buffer_need(ss)
         pool = sup - (need2 - buf)
         robust[str(dT)] = dict(short_days=int(np.sum(pool < -0.5)),
                                min_buffer_pct=float(100 * np.min(margin / np.maximum(need2, 1e-6))),
                                unreleased_pct=float(100 * sum(main["total"] * p / 100 * (1 - Fend2[k])
                                                               for k, p in main["rec"] if k != "urea") / main["total"]))
 
-    step = 2
+    step = SCEN["series_step"]
     idx = list(range(0, ss["n"], step))
     if idx[-1] != ss["L"]:
         idx.append(ss["L"])
-    tau_all = M.cum_tau(ss["Tpaddy"], M.P["Ea"], M.P["f_soil"])
+    tau_all = cum_tau(ss["Tpaddy"], P["Ea"], P["f_soil"])
     comps = {}
     for k, p in main["rec"]:
         kg = main["total"] * p / 100
         if k == "urea":
-            cum = np.cumsum(M.urea_increment(ss["n"])) / (1 - M.P["urea_loss"])
+            cum = np.cumsum(urea_increment(ss["n"])) / (1 - P["urea_loss"])
         else:
-            cum = M.release(tau_all, k)
+            cum = release(tau_all, k)
         comps["尿素" if k == "urea" else f"CR{k}"] = [round(float(kg * cum[i]), 1) for i in idx]
     uptake_cum = np.cumsum(ss["d"])
     crop_cum = ss["Fcrop"] * ss["uptake_total"]
-    c = M.CROP[s["type"]]
+    c = CROP[s["type"]]
     n_cr = sum(p for k, p in main["rec"] if k != "urea") / 100
-    kg_cr = main["total"] * n_cr / M.P["n_cru"]
-    kg_u = main["total"] * (1 - n_cr) / M.P["n_urea"]
+    kg_cr = main["total"] * n_cr / P["n_cru"]
+    kg_u = main["total"] * (1 - n_cr) / P["n_urea"]
     return dict(
-        zone=z["id"], idx=si, name=s["name"], est=s["est"], est_label=M.EST[s["est"]]["label"],
+        zone=z["id"], idx=si, name=s["name"], est=s["est"], est_label=EST[s["est"]]["label"],
         type=s["type"], type_label=c["label"], note=s["note"], app=s["app"], days=s["days"],
         start_doy=ss["start"], tPI=ss["tPI"], tH=ss["tH"], Y=s["Y"], INS=s["INS"], FN=s["FN"],
         nreq=c["nreq"], uptake_total=round(ss["uptake_total"]), fert_demand=round(ss["fert_demand"], 1),
@@ -115,39 +104,78 @@ def run_season(args):
             demand=[round(float(uptake_cum[i]), 1) for i in idx],
             comps=comps,
             pool=[round(float(sim["pool"][i]), 1) for i in idx],
-            floor=[round(float(M.buffer_need(ss)[i]), 1) for i in idx],
+            floor=[round(float(buffer_need(ss)[i]), 1) for i in idx],
         ),
     )
 
 
-def main():
+def _git(*args):
+    try:
+        return subprocess.run(["git", *args], cwd=HERE, capture_output=True, text=True, check=True).stdout.rstrip("\n")
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def build_info(outputs):
+    """记录生成这次输出所用的源代码版本与运行环境，便于日后核对“某份 HTML 是哪个 commit 生成的”。"""
+    generated = {"index.html", "data.json", "BUILD_INFO.json"}
+    status = _git("status", "--porcelain", "--", ".", str(COMMON))
+    dirty = None
+    if status is not None:
+        dirty = [line[3:] for line in status.splitlines()
+                 if Path(line[3:].split(" -> ")[-1]).name not in generated and "__pycache__" not in line]
+    return dict(
+        source_commit=_git("rev-parse", "HEAD"),
+        source_dirty_files=dirty,
+        built_at_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        python=platform.python_version(), numpy=np.__version__, scipy=scipy.__version__,
+        params_file=PARAMS_FILE.name,
+        outputs={name: hashlib.sha256(data).hexdigest() for name, data in outputs.items()},
+    )
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="生成稻季控释配方地图")
+    ap.add_argument("--jobs", type=int, default=os.cpu_count(), help="并行进程数（默认 CPU 核数）")
+    args = ap.parse_args(argv)
+
     jobs = [(zi, si) for zi, z in enumerate(ZONES) for si in range(len(z["seasons"]))]
-    with Pool() as pool:
-        out = pool.map(run_season, jobs)
+    if args.jobs > 1:
+        with Pool(args.jobs) as pool:
+            out = pool.map(run_season, jobs)
+    else:
+        out = [run_season(j) for j in jobs]
+
     zones = []
-    for zi, z in enumerate(ZONES):
+    for z in ZONES:
         zs = [o for o in out if o["zone"] == z["id"]]
         zones.append(dict(id=z["id"], name=z["name"], country=z["country"], country_name=COUNTRIES[z["country"]],
                           station=z["station"], lat=z["lat"], lon=z["lon"], T=z["T"], crop=z["crop"], seasons=zs))
-    params = dict(P=M.P, CROP=M.CROP, EST=M.EST, PRODUCTS=M.PRODUCTS)
-    sys.path.insert(0, str(HERE.parent / "common"))
+    params = dict(P=P, CROP=CROP, EST=EST, PRODUCTS=PRODUCTS)
+    sys.path.insert(0, str(COMMON))
     import env as ENV
     params["ENV"] = ENV.add_env("rice", zones)
     data = dict(zones=zones, params=params, countries=COUNTRIES)
-    (HERE / "data.json").write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
-    world = (HERE / "countries-50m.json").read_text()
+    data_json = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+    world = (HERE / "data" / "countries-50m.json").read_text()
     html = (HERE / "template.html").read_text()
-    html = html.replace("/*__DATA__*/null", json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+    html = html.replace("/*__DATA__*/null", data_json)
     html = html.replace("/*__WORLD__*/null", world)
-    common = HERE.parent / "common"
-    html = html.replace("<!--__ENV_SECTION__-->", (common / "env_section.html").read_text())
-    html = html.replace("/*__ENV_JS__*/", (common / "env.js").read_text())
+    html = html.replace("<!--__ENV_SECTION__-->", (COMMON / "env_section.html").read_text())
+    html = html.replace("/*__ENV_JS__*/", (COMMON / "env.js").read_text())
+
+    (HERE / "data.json").write_text(data_json)
     (HERE / "index.html").write_text(html)
-    # 汇总表
+    info = build_info({"index.html": html.encode(), "data.json": data_json.encode()})
+    (HERE / "BUILD_INFO.json").write_text(json.dumps(info, ensure_ascii=False, indent=2) + "\n")
+
     print(f"{'分区':20s}{'季别':16s}{'配方':34s}{'总N':>5s}{'三次分施尿素':>8s}{'当地常规':>6s}{'RE':>6s}")
     for z in zones:
         for s in z["seasons"]:
             print(f"{z['name'][:18]:20s}{s['name'][:14]:16s}{s['rec_str']:34s}{s['total']:5d}{s['split_total']:8d}{s['FN']:6d}{s['RE']:6.2f}")
+    print(f"\n{len(zones)} 个稻作区、{len(out)} 个稻季；源代码 commit {info['source_commit']}"
+          + ("（有未提交改动：" + ", ".join(info["source_dirty_files"]) + "）" if info["source_dirty_files"] else ""))
 
 
 if __name__ == "__main__":

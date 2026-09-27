@@ -1,0 +1,4 @@
+# Python ≥ 3.11（params.toml 用标准库 tomllib 读取）
+# 下列为已验证可逐字节复现 index.html 的版本；更新版本通常也能运行，但浮点结果可能有极小差异
+numpy==2.4.6
+scipy==1.17.1
