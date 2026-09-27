@@ -142,12 +142,18 @@ def main():
         zones.append(dict(id=z["id"], name=z["name"], country=z["country"], country_name=COUNTRIES[z["country"]],
                           station=z["station"], lat=z["lat"], lon=z["lon"], T=z["T"], crop=z["crop"], seasons=zs))
     params = dict(P=M.P, CROP=M.CROP, EST=M.EST, PRODUCTS=M.PRODUCTS)
+    sys.path.insert(0, str(HERE.parent / "common"))
+    import env as ENV
+    params["ENV"] = ENV.add_env("wheat", zones)
     data = dict(zones=zones, params=params, countries=COUNTRIES)
     (HERE / "data.json").write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
     world = (HERE / "countries-50m.json").read_text()
     html = (HERE / "template.html").read_text()
     html = html.replace("/*__DATA__*/null", json.dumps(data, ensure_ascii=False, separators=(",", ":")))
     html = html.replace("/*__WORLD__*/null", world)
+    common = HERE.parent / "common"
+    html = html.replace("<!--__ENV_SECTION__-->", (common / "env_section.html").read_text())
+    html = html.replace("/*__ENV_JS__*/", (common / "env.js").read_text())
     (HERE / "index.html").write_text(html)
     # 汇总表
     print(f"{'分区':20s}{'季别':16s}{'配方':34s}{'总N':>5s}{'分次施尿素':>8s}{'当地常规':>6s}{'RE':>6s}")

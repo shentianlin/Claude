@@ -1,0 +1,89 @@
+<style>
+.env-tiles{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:16px}
+.env-tiles div{padding:14px 16px 14px 0;display:flex;flex-direction:column;gap:2px}
+.env-tiles div + div{padding-left:16px;border-left:1px solid var(--line)}
+.env-tiles b{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--good)}
+.env-tiles span{font-size:12px;color:var(--muted)}
+.envtbl{width:100%;border-collapse:collapse;font-size:13px}
+.envtbl th,.envtbl td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.envtbl th{font-family:var(--sans);font-weight:500;color:var(--muted);font-size:12px}
+.envtbl td:first-child,.envtbl th:first-child{text-align:left;font-family:var(--sans)}
+.envtbl td.d{color:var(--good)}
+.envtbl td.u{color:var(--bad)}
+.envtbl small{color:var(--muted);font-size:11px}
+.decomp{display:flex;height:18px;border-radius:3px;overflow:hidden;margin:6px 0 4px;background:var(--chip)}
+.decomp div{height:100%}
+.area-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px;font-size:13px}
+.area-row input{font:inherit;width:90px;padding:3px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.area-out{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:8px}
+.area-out div{background:var(--chip);border-radius:4px;padding:6px 8px;font-size:12px}
+.area-out b{display:block;font-family:var(--mono);font-size:15px;font-weight:500}
+.valid ol{padding-left:20px}
+.valid li{margin-bottom:6px;max-width:72ch}
+@media (max-width:900px){.env-tiles{grid-template-columns:1fr 1fr}.env-tiles div:nth-child(odd){padding-left:0;border-left:0}.env-tiles div:nth-child(n+3){border-top:1px solid var(--line)}}
+</style>
+
+<section id="envSec">
+  <div class="sec-head">
+    <h2>环境效应：氨挥发、N₂O、淋溶径流与碳足迹</h2>
+    <span class="muted" style="font-size:13px">推荐控释掺混 对比 农户常规施尿素；中位数，括号内为 Monte Carlo 5–95% 区间</span>
+  </div>
+  <div class="env-tiles" id="envTiles"></div>
+  <div class="tbl-tools" style="margin-bottom:10px">
+    <input id="eq" type="search" placeholder="筛选：国家、地区、季别…" aria-label="筛选环境效应表">
+    <span class="muted" id="eqCount" style="font-size:13px"></span>
+  </div>
+  <div class="scroll" style="max-height:480px">
+    <table class="all" id="envAll">
+      <thead><tr>
+        <th>国家</th><th>产区</th><th>季别</th><th class="n">施氮 常规→控释</th><th class="n">NH₃</th><th class="n">N₂O</th><th class="n">淋溶径流</th>
+        <th class="n">Nr 损失 kg N/ha</th><th class="n">其中 减量/控释</th><th class="n">碳足迹 kg CO₂e/t</th><th class="n">社会效益 USD/ha</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <p class="note">百分比为控释方案相对农户常规的变化。“减量”指施氮量从常规降到推荐量（仍用尿素）带来的变化，“控释”指在推荐氮量下把 c% 的氮换成包膜尿素带来的变化；二者相加约等于总变化。农户常规施氮量为约数，某些地区常规量低于推荐量，此时“减量”一项为正（增加）。</p>
+
+  <div class="methods" style="margin-top:22px">
+    <div>
+      <h3>计算方法</h3>
+      <p>仿照 Gu 等（2023，Nature）评估农田氮减排措施的做法：先用排放因子估算每种方案的基线损失，再乘以 meta 分析得到的措施效应，最后用单位损害成本折算社会效益；碳足迹按生命周期评价（ISO 14040/14067 思路，摇篮到农场大门，只计化肥相关部分）。</p>
+      <div class="formula">NH₃   = N · EF_NH3 · pH 系数 · (1 − c·RR_NH3)
+N₂O直 = N · EF1 · (1 − c·RR_N2O)
+淋溶径流 = N · Frac_LEACH · (1 − c·RR_LEACH)
+N₂O间 = EF4 · NH₃ + EF5 · 淋溶径流
+温室气体 = N₂O · 44/28 · 273 + N · 生产排放 + N·c · 包膜附加
+损害成本 = NH₃ · D_NH3 + 淋溶径流 · D_water + CO₂e · 碳价
+c = 掺混中包膜尿素所占氮比例；三种方案产量相同（偏保守）</div>
+      <table class="ptable" id="envPtbl" style="margin-top:8px"></table>
+    </div>
+    <div class="valid">
+      <h3>如何验证</h3>
+      <ol>
+        <li><b>成对田间试验</b>：在代表性分区设 CK（不施氮）、FP（农户常规）、OPT（分次施尿素）、CRF（推荐掺混）、CRF-20%（减氮 20%）五个处理，随机区组、3–4 次重复、至少 2 季。</li>
+        <li><b>氨挥发</b>：通气法或动态箱法，每次施肥后前 10 天每天测，之后隔天；至少一个点用微气象积分水平通量法（IHF）或风洞校准箱法系数。稻田同时测田面水 NH₄⁺ 与 pH。</li>
+        <li><b>N₂O（水稻加测 CH₄）</b>：静态箱—气相色谱，施肥、灌溉、降雨后加密到每天，常规每周 2 次；有条件用自动箱全季连续观测，避免漏掉排放峰。</li>
+        <li><b>淋溶与径流</b>：旱地埋渗漏计或陶土吸杯（结合水量平衡算通量）；稻田收集排水、溢流与田埂侧渗；同时测 60–100 cm 土层硝态氮。</li>
+        <li><b>氮平衡闭合</b>：用 ¹⁵N 标记微区追踪肥料氮去向（作物、土壤残留、损失），检验各项损失之和与“施氮 − 吸收 − 残留”是否吻合。</li>
+        <li><b>对照模型</b>：逐项比较实测排放因子、实测减排比例与本页假设；统计偏差、RMSE，并检查实测值落在 5–95% 区间内的比例是否接近 90%。偏差大的参数用贝叶斯方法更新后重算。</li>
+        <li><b>过程模型交叉检验</b>：在代表站用 DNDC 或 DayCent 模拟同一组处理，和本页的排放因子法结果比较。</li>
+        <li><b>区域尺度</b>：大面积推广后，用卫星氨柱浓度（IASI、CrIS）、河流硝态氮监测数据，与推广前或未推广区域对比。</li>
+        <li><b>LCA 第三方核查</b>：按 ISO 14040/14044 与 ISO 14067 编写碳足迹报告，化肥生产排放用您工厂的实际能耗与原料数据替换默认值。</li>
+      </ol>
+      <h3 style="margin-top:18px">环境效应文献</h3>
+      <ol class="refs">
+        <li>Gu et al. 2023. <a href="https://consensus.app/papers/details/8d2668d1febf5d088072708e99cb2101/" target="_blank" rel="noopener">Cost-effective mitigation of nitrogen pollution from global croplands</a>. Nature.</li>
+        <li>You et al. 2024. <a href="https://consensus.app/papers/details/cb2797e144225b87b79bca5b511d9136/" target="_blank" rel="noopener">Optimized agricultural management reduces global cropland nitrogen losses to air and water</a>. Nature Food.</li>
+        <li>Lu et al. 2023. <a href="https://consensus.app/papers/details/ca2061b2c4fd52829e9851c838756062/" target="_blank" rel="noopener">Responses of NH₃ and N₂O emissions to controlled release N fertilizer: a meta-analysis</a>. J Integr Agric.</li>
+        <li>Jiang et al. 2021. <a href="https://consensus.app/papers/details/97387d895e045889af3266bf4f318059/" target="_blank" rel="noopener">Controlled release urea improves rice production and reduces environmental pollution</a>. Environ Sci Pollut Res.</li>
+        <li>Yang et al. 2021. <a href="https://consensus.app/papers/details/67c1d5ca939b5b79a34b998c8f467f20/" target="_blank" rel="noopener">Coated controlled-release urea creates a win-win scenario</a>. J Clean Prod.</li>
+        <li>Zhang et al. 2019. <a href="https://consensus.app/papers/details/abd4f39579c55046b4c62f155b39281a/" target="_blank" rel="noopener">Effects of controlled release urea on maize productivity and reactive N losses: a meta-analysis</a>. Environ Pollut.</li>
+        <li>IPCC 2019. <a href="https://www.ipcc-nggip.iges.or.jp/public/2019rf/pdf/4_Volume4/19R_V4_Ch11_Soils_N2O_CO2.pdf" target="_blank" rel="noopener">2019 Refinement, Vol. 4 Ch. 11: N₂O emissions from managed soils</a>.</li>
+        <li>van Grinsven et al. 2013. <a href="https://consensus.app/papers/details/1e9e0fd61efd54bb976d53e49bbd4a5b/" target="_blank" rel="noopener">Costs and benefits of nitrogen for Europe and implications for mitigation</a>. ES&amp;T.</li>
+        <li>Keeler et al. 2016. <a href="https://consensus.app/papers/details/e8f9fe51e9cf5a12ba5411456845235b/" target="_blank" rel="noopener">The social costs of nitrogen</a>. Science Advances.</li>
+        <li>Zhang et al. 2013. <a href="https://consensus.app/papers/details/2f9b26a4b8ae500ab9078b2fdb72b6bf/" target="_blank" rel="noopener">New technologies reduce GHG emissions from nitrogenous fertilizer in China</a>. PNAS.</li>
+        <li>Menegat et al. 2022. <a href="https://consensus.app/papers/details/02b0a152e00357529aa457abd9626df9/" target="_blank" rel="noopener">GHG emissions from global production and use of nitrogen synthetic fertilisers</a>. Sci Rep.</li>
+      </ol>
+    </div>
+  </div>
+</section>

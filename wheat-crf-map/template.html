@@ -269,6 +269,8 @@ a{color:var(--urea)}
   </div>
 </section>
 
+<!--__ENV_SECTION__-->
+
 <section>
   <div class="sec-head"><h2>方法、参数与需要您实测的数据</h2></div>
   <div class="methods">
@@ -631,6 +633,8 @@ function drawC3(){
 $("#cropTbl").innerHTML=Object.values(DATA.params.CROP).map(c=>`<tr><td>${c.label}</td><td class="n">${c.nreq}</td><td class="n">${Math.round(c.pPI*100)}%</td><td class="n">${Math.round(c.pH*100)}%</td></tr>`).join("");
 const PL=[["Ea","表观活化能 kJ/mol"],["beta","释放曲线形状 β"],["f0","初期溶出比例"],["f_soil","湿润旱地土壤释放系数"],["soil_dT","5 cm 土温 − 气温 °C"],["urea_loss","基施尿素初始损失"],["k_loss","20 °C 时氮库日损失率"],["eta","根系最大截获效率"],["buffer","库中保有未来需求天数"],["early_pool","拔节前库存下限（占肥料需供量）"]];
 $("#pTbl").innerHTML=PL.map(([k,l])=>`<tr><td>${l}</td><td class="n">${P[k]}</td></tr>`).join("");
+
+/*__ENV_JS__*/
 
 /* ---------- boot ---------- */
 $("#nZ").textContent=DATA.zones.length; $("#nS").textContent=SEASONS.length;
