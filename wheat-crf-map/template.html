@@ -143,7 +143,10 @@ table.all tbody tr:hover{background:var(--chip)}
 .refs li{font-size:13px;margin-bottom:4px}
 a{color:var(--urea)}
 .note{font-size:13px;color:var(--muted);margin-top:8px}
+.scen{display:flex;flex-direction:column;gap:6px;align-items:flex-end;text-align:right;max-width:360px}
+.scen .note{margin:0}
 @media (max-width:900px){
+  .scen{align-items:flex-start;text-align:left;max-width:none}
   .detail,.explorer,.methods{grid-template-columns:1fr}
   .findings{grid-template-columns:1fr 1fr}
   .finding:nth-child(3){padding-left:0;border-left:0}
@@ -164,7 +167,12 @@ a{color:var(--urea)}
     <h1>麦季控释配方地图</h1>
     <p class="lede"><span id="nZ"></span> 个小麦产区、<span id="nS"></span> 个麦季。每个麦季都用当地气温推算 5 cm 土温（冻土期包膜停止释放），把 25 °C 静水控释期换算成田间实际释放，再和小麦的吸氮进程逐日比对，求出“全季不断顿、总氮量最少”的掺混方案。鼠标放在地图圆点上查看，点击看完整曲线。</p>
   </div>
-  <div class="muted" style="font-size:13px;text-align:right">模型版本 0.1 · 参数待田间标定</div>
+  <div class="scen">
+    <div class="eyebrow">产品方案</div>
+    <div class="seg" id="scenSeg" role="group" aria-label="产品方案"></div>
+    <p class="note" id="scenNote"></p>
+    <div class="muted" style="font-size:12px">模型版本 0.2 · 参数待田间标定</div>
+  </div>
 </header>
 
 <div class="findings" id="findings"></div>
@@ -296,6 +304,14 @@ k(T) = k20 · 2^((T−20)/10) · wet        （低温损失小，多雨区 wet&g
 目标（不浪费）：总施氮量最小
 稳健：同一配方须在常年、偏冷 1.5 °C、偏暖 1.5 °C 三种年份都满足约束</div>
       <p>对“尿素 + 至多 2 个控释期”的每个组合（30–360 天共 34 档）解一次线性规划，比例按 5% 取整后再求满足约束的最小总量。小麦上短控释期对温度敏感：只按常年气温优化时，暖秋会让包膜在冬前释放过多、返青拔节时断顿，所以约束同时覆盖冷年与暖年。成熟时没释放完的氮、前期释放过早而损失的氮，都会自动计入总量。</p>
+      <h3 style="margin-top:18px">4. S 型产品情景（页头可切换）</h3>
+      <p>页头“产品方案”可以在三种方案间切换，地图提示、详情曲线、配方表和环境效应会一起更新：</p>
+      <ul>
+        <li><b>线性型（现有）</b>：β=1.3，尿素加 1–2 个控释期；</li>
+        <li><b>S 型单档</b>：假设的 S 型包膜尿素（β=2.5，有滞后期），尿素加 1 个 S 型档位；</li>
+        <li><b>S 型两档</b>：尿素加至多 2 个 S 型档位，取整后若只剩一档，则与单档相同。</li>
+      </ul>
+      <p>S 型档位的控释期同样按 25 °C 静水 80% 释放天数标定，“管饱、总氮最少”的标准不变。S 型的滞后期对温度更敏感（暖年前期放得多、后期容易不够），所以 S 型方案都要求同一配方在常年、偏冷 1.5 °C、偏暖 1.5 °C 三种年份都不断顿。S 型的滞后期来自水分渗入膜内，在低温、冻融下是否仍只随温度伸缩，需要样品实测后才能确认；环境效应沿用控释尿素的 meta 分析减排比例。</p>
     </div>
     <div>
       <h3>默认参数</h3>
@@ -352,24 +368,27 @@ const MDAYS=[0,31,59,90,120,151,181,212,243,273,304,334];
 const SEASONS=[]; DATA.zones.forEach(z=>z.seasons.forEach(s=>SEASONS.push({z,s})));
 const $=s=>document.querySelector(s);
 const fmtDate=doy=>{doy=((doy%365)+365)%365;let m=11;while(MDAYS[m]>doy)m--;return `${m+1}月${doy-MDAYS[m]+1}日`;};
-const compName=k=>k==="urea"?"尿素":`CR${k}`;
+let SCEN="lin";   // 当前产品方案：lin 线性型 / s1 S 型单档 / s2 S 型两档
+const PFX=()=>SCEN==="lin"?"CR":"S";
+const compName=k=>k==="urea"?"尿素":`${PFX()}${k}`;
 
 /* ---------- findings ---------- */
-(function(){
+function renderFindings(){
   const used = new Set(); SEASONS.forEach(({s})=>s.rec.forEach(([k])=>{if(k!=="urea")used.add(+k)}));
   const u=[...used].sort((a,b)=>a-b);
   const ureaShare=SEASONS.map(({s})=>(s.rec.find(r=>r[0]==="urea")||[0,0])[1]);
   const save=SEASONS.map(({s})=>1-s.total/s.split_total);
-  const stype=SEASONS.map(({s})=>1-s.stype.total/s.total);
+  const vsAlt=SCEN==="lin"?SEASONS.map(({s})=>1-s.alt.s1.total/s.total):SEASONS.map(({s})=>1-s.total/s.alt.lin.total);
   const med=a=>{a=[...a].sort((x,y)=>x-y);return a[Math.floor(a.length/2)]};
   const items=[
-    [`CR${u[0]}–CR${u[u.length-1]}`,"小麦上用到的控释期范围；麦田土温低、冬季冻土不释放，长档位一季释放不完"],
+    [`${PFX()}${u[0]}–${PFX()}${u[u.length-1]}`,"小麦上用到的控释期范围；麦田土温低、冬季冻土不释放，长档位一季释放不完"],
     [`${Math.min(...ureaShare)}–${Math.max(...ureaShare)}%`,"最优配方中尿素所占比例，其余为 1–2 个相邻控释期"],
     [`${Math.round(100*med(save))}%`,"与同样“管饱”的分次施尿素相比，节省氮量（中位数）"],
-    [`${Math.round(100*med(stype))}%`,"若做成 S 型（β=2.5）、越冬“休眠”返青后才集中释放的产品，还能再省的氮量（中位数）"],
+    [`${Math.round(100*med(vsAlt))}%`, SCEN==="lin"?`若改用 S 型单档（β=${DATA.params.SCEN.stype_beta}，有滞后期），还能再省的氮量（中位数）`:"与现有线性型产品方案相比，节省氮量（中位数）"],
   ];
   $("#findings").innerHTML=items.map(([b,t])=>`<div class="finding"><b>${b}</b><span>${t}</span></div>`).join("");
-})();
+}
+renderFindings();
 
 /* ---------- map ---------- */
 const mapSvg=d3.select("#map"), tip=$("#tip"), wrap=$("#mapWrap");
@@ -569,15 +588,19 @@ function drawC2(s){
   svg.append("g").attr("class","axis").attr("transform",`translate(${w-m.r},0)`).call(d3.axisRight(yT).ticks(4).tickFormat(d=>d+"°"));
 }
 function renderSens(s){
-  const r=s.robust, ok=v=>v.short_days===0;
+  const r=s.robust, ok=v=>v.short_days===0, SC=DATA.params.SCEN;
+  const b=SCEN==="lin"?SC.lin_beta:SC.stype_beta;
+  const others=["lin","s1","s2"].filter(k=>k!==SCEN).map(k=>
+    `<tr><td>对照：${SC.labels[k]}</td><td>${s.alt[k].rec_str}</td><td class="n">${s.alt[k].total}</td></tr>`).join("");
+  const rob=(k,lab)=>`<tr><td>当前配方遇${lab}</td><td colspan="2"><span class="pill ${ok(r[k])?"good":"bad"}">${ok(r[k])?"不断顿":"断顿 "+r[k].short_days+" 天"}</span> 成熟时未释放 ${r[k].unreleased_pct.toFixed(0)}%</td></tr>`;
   $("#sens").innerHTML=`
    <tr><th>情景</th><th>最优配方</th><th class="n">总 N</th></tr>
-   <tr><td>基准（Ea 50，β 1.3）</td><td>${s.rec_str}</td><td class="n">${s.total}</td></tr>
+   <tr><td>${SC.labels[SCEN]}（Ea 50，β ${b}）</td><td>${s.rec_str}</td><td class="n">${s.total}</td></tr>
    <tr><td>实测 Ea 偏低（38 kJ/mol）</td><td>${s.sens["38"].rec_str}</td><td class="n">${s.sens["38"].total}</td></tr>
    <tr><td>实测 Ea 偏高（65 kJ/mol）</td><td>${s.sens["65"].rec_str}</td><td class="n">${s.sens["65"].total}</td></tr>
-   <tr><td>产品改为 S 型（β 2.5）</td><td>${s.stype.rec_str}</td><td class="n">${s.stype.total}</td></tr>
-   <tr><td>基准配方遇偏冷年（−1.5 °C）</td><td colspan="2"><span class="pill ${ok(r["-1.5"])?"good":"bad"}">${ok(r["-1.5"])?"不断顿":"断顿 "+r["-1.5"].short_days+" 天"}</span> 成熟时未释放 ${r["-1.5"].unreleased_pct.toFixed(0)}%</td></tr>
-   <tr><td>基准配方遇偏暖年（+1.5 °C）</td><td colspan="2"><span class="pill ${ok(r["1.5"])?"good":"bad"}">${ok(r["1.5"])?"不断顿":"断顿 "+r["1.5"].short_days+" 天"}</span> 成熟时未释放 ${r["1.5"].unreleased_pct.toFixed(0)}%</td></tr>`;
+   ${others}
+   ${rob("-1.5","偏冷年（−1.5 °C）")}
+   ${rob("1.5","偏暖年（+1.5 °C）")}`;
 }
 
 /* ---------- table ---------- */
@@ -598,7 +621,9 @@ function renderTable(){
 $("#q").addEventListener("input",renderTable);
 
 /* ---------- explorer ---------- */
-const USED=new Set(); SEASONS.forEach(({s})=>s.rec.forEach(([k])=>{if(k!=="urea")USED.add(+k)}));
+let USED=new Set();
+function recomputeUsed(){ USED=new Set(); SEASONS.forEach(({s})=>s.rec.forEach(([k])=>{if(k!=="urea")USED.add(+k)})); }
+recomputeUsed();
 let exEa=P.Ea, exB=P.beta;
 const arr=(T,Ea)=>Math.exp(Ea*1000/8.314*(1/298.15-1/(T+273.15)));
 const lamF=(D,f0,b)=>D/Math.pow(Math.log((1-f0)/0.2),1/b);
@@ -635,6 +660,8 @@ const PL=[["Ea","表观活化能 kJ/mol"],["beta","释放曲线形状 β"],["f0"
 $("#pTbl").innerHTML=PL.map(([k,l])=>`<tr><td>${l}</td><td class="n">${P[k]}</td></tr>`).join("");
 
 /*__ENV_JS__*/
+
+/*__SCEN_JS__*/
 
 /* ---------- boot ---------- */
 $("#nZ").textContent=DATA.zones.length; $("#nS").textContent=SEASONS.length;

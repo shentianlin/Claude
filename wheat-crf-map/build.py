@@ -4,6 +4,7 @@ import math
 import sys
 from multiprocessing import Pool
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -11,6 +12,19 @@ import model as M
 from zones import ZONES, COUNTRIES
 
 HERE = Path(__file__).parent
+sys.path.insert(0, str(HERE.parent / "common"))
+import scenarios as SC  # noqa: E402
+
+STYPE_BETA = 2.5
+# S 型情景用到的模型接口
+ADAPTER = SimpleNamespace(
+    P=M.P,
+    best_recipe=lambda ss, Ea, beta: best_recipe(ss, Ea=Ea, beta=beta),
+    nominal_basis=lambda ss: M.season_basis(ss),
+    season_basis=lambda ss, dT: M.season_basis(ss, dT=dT),
+    simulate=M.simulate, buffer_need=M.buffer_need, cum_tau=M.cum_tau, release=M.release,
+    urea_increment=M.urea_increment,
+)
 
 
 def rec_str(rec):
@@ -23,12 +37,14 @@ def best_recipe(ss, Ea=None, beta=None):
     best, best1, ideal, G, need, Fend, tau = M.optimize(ss, Ea=Ea)
     r2, t2 = M.round_recipe(best[1], best[2], G, need)
     r1, t1 = M.round_recipe(best1[1], best1[2], G, need)
+    pair, pair_total = r2, t2               # 不做“单档优先”取舍的两档方案（供 S 型两档情景使用）
     # 生产上组分越少越好：单一控释期的方案多用不超过 3% 的氮就选它
     if t1 <= t2 * 1.03:
         r2, t2 = r1, t1
     if beta is not None:
         M.P["beta"] = 1.3
-    return dict(rec=r2, total=t2, simple=r1, simple_total=t1, ideal=ideal), G, need, Fend, tau
+    return dict(rec=r2, total=t2, simple=r1, simple_total=t1, ideal=ideal,
+                pair=pair, pair_total=pair_total), G, need, Fend, tau
 
 
 def split_urea(ss, mode):
@@ -68,8 +84,6 @@ def run_season(args):
     for Ea in (38, 65):
         r, *_ = best_recipe(ss, Ea=Ea)
         sens[str(Ea)] = dict(rec=r["rec"], total=r["total"])
-    # 形状敏感性：若做成 S 型（有滞后期）产品
-    rS, *_ = best_recipe(ss, beta=2.5)
     # 年际温度波动：配方不变，释放随温度 ±1.5 °C 变化
     robust = {}
     for dT in (-1.5, 1.5):
@@ -89,6 +103,8 @@ def run_season(args):
     if idx[-1] != ss["L"]:
         idx.append(ss["L"])
     tau_all = M.cum_tau(ss["Tpaddy"], M.P["Ea"], M.P["f_soil"])
+    # 可选情景：S 型（有滞后期）产品的单档 / 两档方案（同样要求冷年、常年、暖年都不断顿）
+    alt = SC.s_type_alternatives(ADAPTER, ss, idx, STYPE_BETA, (38, 65), (-1.5, 1.5))
     comps = {}
     for k, p in main["rec"]:
         kg = main["total"] * p / 100
@@ -118,7 +134,7 @@ def run_season(args):
         RE=round(sim["RE"], 3), unreleased=round(sim["unreleased_pct"], 1),
         split_total=split_total, split_days=split_days,
         sens={k: dict(rec_str=rec_str(v["rec"]), total=v["total"]) for k, v in sens.items()},
-        stype=dict(rec_str=rec_str(rS["rec"]), total=rS["total"]),
+        alt=alt,
         robust=robust,
         series=dict(
             t=idx,
@@ -142,9 +158,11 @@ def main():
         zones.append(dict(id=z["id"], name=z["name"], country=z["country"], country_name=COUNTRIES[z["country"]],
                           station=z["station"], lat=z["lat"], lon=z["lon"], T=z["T"], crop=z["crop"], seasons=zs))
     params = dict(P=M.P, CROP=M.CROP, EST=M.EST, PRODUCTS=M.PRODUCTS)
-    sys.path.insert(0, str(HERE.parent / "common"))
     import env as ENV
     params["ENV"] = ENV.add_env("wheat", zones)
+    for key in ("s1", "s2"):
+        ENV.add_env_alt("wheat", zones, key)
+    params["SCEN"] = dict(labels=SC.SCEN_LABELS, stype_beta=STYPE_BETA, lin_beta=M.P["beta"])
     data = dict(zones=zones, params=params, countries=COUNTRIES)
     (HERE / "data.json").write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
     world = (HERE / "countries-50m.json").read_text()
@@ -154,6 +172,7 @@ def main():
     common = HERE.parent / "common"
     html = html.replace("<!--__ENV_SECTION__-->", (common / "env_section.html").read_text())
     html = html.replace("/*__ENV_JS__*/", (common / "env.js").read_text())
+    html = html.replace("/*__SCEN_JS__*/", (common / "scenario.js").read_text())
     (HERE / "index.html").write_text(html)
     # 汇总表
     print(f"{'分区':20s}{'季别':16s}{'配方':34s}{'总N':>5s}{'分次施尿素':>8s}{'当地常规':>6s}{'RE':>6s}")

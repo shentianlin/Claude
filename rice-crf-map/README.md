@@ -36,9 +36,10 @@ rice-crf-map/
 └── BUILD_INFO.json     生成记录：源代码 commit、运行环境、输出文件的 sha256
 ```
 
-环境效应的计算代码在仓库根目录的 `../common/`（与小麦版共用）：
+环境效应和 S 型情景的计算代码在仓库根目录的 `../common/`（与小麦版共用）：
 - `env.py`：计算代码和全部环境参数；
-- `env_section.html`、`env.js`：页面里的环境效应部分。
+- `env_section.html`、`env.js`：页面里的环境效应部分；
+- `scenarios.py`、`scenario.js`：S 型产品情景的计算和页面切换。
 
 `build.py` 会自动读取它们，所以请保持仓库的目录结构不变。
 
@@ -64,6 +65,21 @@ python build.py                         # 4 核约 1.5–2 分钟；--jobs 1 为
 - `data.json`
 - `index.html`：用浏览器直接打开即可；
 - `BUILD_INFO.json`。
+
+## 产品方案情景
+
+页面顶部的“产品方案”可以在三种方案间切换，地图提示、详情曲线、配方表和环境效应都会随之更新：
+
+| 方案 | 含义 |
+|---|---|
+| 线性型（现有产品） | 默认方案：β=1.3，尿素 + 1–2 个控释期（CR 档） |
+| S 型单档 | 假设的 S 型包膜尿素（β=`params.toml` 中的 `stype_beta`，默认 2.5，有滞后期）：尿素 + 1 个 S 型档位 |
+| S 型两档 | 尿素 + 至多 2 个 S 型档位，取整后若只剩一档，则与单档相同 |
+
+- S 型档位的控释期同样按 25 °C 静水 80% 释放天数标定。
+- S 型的滞后期对温度更敏感，所以 S 型方案都要求同一配方在常年、偏冷 1.5 °C、偏暖 1.5 °C 三种年份都不断顿，靠 `crfmap.optimize.optimize(robust_dT=...)` 实现。线性型方案本来就满足这个要求。
+- S 型方案的计算代码在 `../common/scenarios.py`（与小麦版共用），前端切换在 `../common/scenario.js`。
+- 在链接末尾加 `#s1` 或 `#s2`，打开页面时就直接显示对应方案。
 
 ## 修改数据和参数
 
@@ -96,6 +112,8 @@ python build.py                         # 4 核约 1.5–2 分钟；--jobs 1 为
 7f0998644ad11e30db6dbbf2ee16c41d23149c4d18f691ee8b576f41112eb673
 ```
 这个文件由 commit `618c51c`（“Add environmental effect assessment to rice and wheat maps”）的源代码生成。之后把代码整理成现在的包结构，只重组了代码、没有改动任何计算。用整理后的代码重新生成，得到的 `index.html` 和 `data.json` 与原来逐字节一致。
+
+加入 S 型产品情景后，页面和 `data.json` 都多了可选方案的数据，所以 sha256 变了；默认线性型方案的每一个数值都与之前相同。最新的对应关系以 `BUILD_INFO.json` 为准。
 
 ## 局限
 

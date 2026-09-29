@@ -202,3 +202,16 @@ def add_env(crop, zones, seed=20260927):
         LEACH_FRAC=LEACH_FRAC, FERT_PROD=FERT_PROD, COATING_EXTRA=COATING_EXTRA, DAMAGE=DAMAGE,
         CARBON_PRICE=CARBON_PRICE, GWP_N2O=GWP_N2O, GWP_CH4=GWP_CH4, CH4_DAILY=CH4_DAILY, N_MC=N_MC,
     )
+
+
+def add_env_alt(crop, zones, key, seed=20260927):
+    """为可选情景 s["alt"][key] 计算环境效应。
+
+    随机数种子与遍历顺序和 add_env 相同，因此同一季别在各情景下使用同一组 Monte Carlo 抽样
+    （公共随机数），情景之间的差别不受抽样噪声影响。
+    """
+    rng = np.random.default_rng(seed)
+    for z in zones:
+        for s in z["seasons"]:
+            a = s["alt"][key]
+            s["alt"][key]["env"] = season_env(crop, z["id"], dict(s, rec=a["rec"], total=a["total"]), rng)

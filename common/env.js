@@ -8,6 +8,7 @@ const cls=v=>v<0?"d":v>0?"u":"";
 const med=a=>{a=[...a].sort((x,y)=>x-y);return a[Math.floor(a.length/2)]};
 
 /* 汇总 */
+function renderEnvTiles(){
 const diffs=k=>SEASONS.map(({s})=>s.env.diff[k].pct[1]);
 const benefit=SEASONS.map(({s})=>s.env.scen.FP.DMG[1]-s.env.scen.CRF.DMG[1]);
 const tiles=[
@@ -18,6 +19,8 @@ const tiles=[
   [`${Math.round(med(benefit))}`,"社会效益 USD/ha·季"],
 ];
 document.getElementById("envTiles").innerHTML=tiles.map(([b,t])=>`<div><b>${b}</b><span>${t}（中位数）</span></div>`).join("");
+}
+renderEnvTiles();
 
 /* 全表 */
 const tb=document.querySelector("#envAll tbody");
@@ -41,6 +44,7 @@ function renderEnvTable(){
 }
 document.getElementById("eq").addEventListener("input",renderEnvTable);
 renderEnvTable();
+window.renderEnvAll=()=>{ renderEnvTiles(); renderEnvTable(); };
 
 /* 参数表 */
 const R=ENV.RR, rr=k=>`${Math.round(R[k][0]*100)}%（${Math.round(R[k][1]*100)}–${Math.round(R[k][2]*100)}）`;

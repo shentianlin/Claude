@@ -14,6 +14,7 @@ import sys
 from datetime import datetime, timezone
 from multiprocessing import Pool
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import scipy
@@ -25,7 +26,20 @@ from crfmap.params import CROP, EST, P, PARAMS_FILE, PRODUCTS, SCEN
 from crfmap.release import cum_tau, release, urea_increment
 
 HERE = Path(__file__).resolve().parent
-COMMON = HERE.parent / "common"          # 环境效应模块（与小麦版共用）
+COMMON = HERE.parent / "common"          # 环境效应、S 型情景模块（与小麦版共用）
+sys.path.insert(0, str(COMMON))
+import scenarios as SC                   # noqa: E402
+
+# S 型情景用到的模型接口
+ADAPTER = SimpleNamespace(
+    P=P,
+    # S 型滞后期对温度更敏感：S 型方案要求常年、偏冷、偏暖年份都不断顿（线性型方案本来就满足）
+    best_recipe=lambda ss, Ea, beta: best_recipe(ss, Ea=Ea, beta=beta,
+                                                 robust_dT=tuple(sorted(list(SCEN["robust_dT"]) + [0.0]))),
+    nominal_basis=lambda ss: season_basis(ss),
+    season_basis=lambda ss, dT: season_basis(ss, dT=dT),
+    simulate=simulate, buffer_need=buffer_need, cum_tau=cum_tau, release=release, urea_increment=urea_increment,
+)
 
 
 def rec_str(rec):
@@ -46,8 +60,6 @@ def run_season(args):
     for Ea in SCEN["ea_sensitivity"]:
         r, *_ = best_recipe(ss, Ea=Ea)
         sens[str(Ea)] = dict(rec=r["rec"], total=r["total"])
-    # 形状敏感性：若做成 S 型（有滞后期）产品
-    rS, *_ = best_recipe(ss, beta=SCEN["stype_beta"])
     # 年际温度波动：配方不变，释放随温度变化
     robust = {}
     for dT in SCEN["robust_dT"]:
@@ -67,6 +79,8 @@ def run_season(args):
     if idx[-1] != ss["L"]:
         idx.append(ss["L"])
     tau_all = cum_tau(ss["Tpaddy"], P["Ea"], P["f_soil"])
+    # 可选情景：S 型（有滞后期）产品的单档 / 两档方案
+    alt = SC.s_type_alternatives(ADAPTER, ss, idx, SCEN["stype_beta"], SCEN["ea_sensitivity"], SCEN["robust_dT"])
     comps = {}
     for k, p in main["rec"]:
         kg = main["total"] * p / 100
@@ -95,7 +109,7 @@ def run_season(args):
         RE=round(sim["RE"], 3), unreleased=round(sim["unreleased_pct"], 1),
         split_total=split_total, split_days=split_days,
         sens={k: dict(rec_str=rec_str(v["rec"]), total=v["total"]) for k, v in sens.items()},
-        stype=dict(rec_str=rec_str(rS["rec"]), total=rS["total"]),
+        alt=alt,
         robust=robust,
         series=dict(
             t=idx,
@@ -152,9 +166,11 @@ def main(argv=None):
         zones.append(dict(id=z["id"], name=z["name"], country=z["country"], country_name=COUNTRIES[z["country"]],
                           station=z["station"], lat=z["lat"], lon=z["lon"], T=z["T"], crop=z["crop"], seasons=zs))
     params = dict(P=P, CROP=CROP, EST=EST, PRODUCTS=PRODUCTS)
-    sys.path.insert(0, str(COMMON))
     import env as ENV
     params["ENV"] = ENV.add_env("rice", zones)
+    for key in ("s1", "s2"):
+        ENV.add_env_alt("rice", zones, key)
+    params["SCEN"] = dict(labels=SC.SCEN_LABELS, stype_beta=SCEN["stype_beta"], lin_beta=P["beta"])
     data = dict(zones=zones, params=params, countries=COUNTRIES)
     data_json = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
 
@@ -164,6 +180,7 @@ def main(argv=None):
     html = html.replace("/*__WORLD__*/null", world)
     html = html.replace("<!--__ENV_SECTION__-->", (COMMON / "env_section.html").read_text())
     html = html.replace("/*__ENV_JS__*/", (COMMON / "env.js").read_text())
+    html = html.replace("/*__SCEN_JS__*/", (COMMON / "scenario.js").read_text())
 
     (HERE / "data.json").write_text(data_json)
     (HERE / "index.html").write_text(html)

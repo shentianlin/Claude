@@ -51,6 +51,15 @@ def season_basis(ss, Ea=None, f_soil=None, dT=0.0, prm=P):
     return G, Dcum + buf, Fend, tau
 
 
+def robust_basis(ss, dTs, Ea=None, f_soil=None, prm=P):
+    """把多个气温偏移年份的约束纵向拼接：同一配方须在这些年份都不断顿。"""
+    parts = [season_basis(ss, Ea, f_soil, dT=dT, prm=prm) for dT in dTs]
+    G = {k: np.concatenate([p[0][k] for p in parts]) for k in parts[0][0]}
+    need = np.concatenate([p[1] for p in parts])
+    base = parts[list(dTs).index(0.0)] if 0.0 in dTs else parts[0]
+    return G, need, base[2], base[3]
+
+
 def solve_lp(G, need, keys, cost):
     A = -np.column_stack([G[k] for k in keys])
     c = np.array([cost[k] for k in keys])
@@ -60,11 +69,15 @@ def solve_lp(G, need, keys, cost):
     return r.x
 
 
-def optimize(ss, Ea=None, f_soil=None, max_cr=None, prm=P, cost_cr=None):
-    """返回 (最优组合, 最优单一控释期组合, 全档位理论下限, G, need, Fend, tau)。"""
+def optimize(ss, Ea=None, f_soil=None, max_cr=None, prm=P, cost_cr=None, robust_dT=None):
+    """返回 (最优组合, 最优单一控释期组合, 全档位理论下限, G, need, Fend, tau)。
+    robust_dT 给出时（如 (-1.5, 0.0, 1.5)），要求配方在这些气温偏移年份都不断顿。"""
     max_cr = OPT["max_cr"] if max_cr is None else max_cr
     cost_cr = OPT["cost_cr"] if cost_cr is None else cost_cr
-    G, need, Fend, tau = season_basis(ss, Ea, f_soil, prm=prm)
+    if robust_dT:
+        G, need, Fend, tau = robust_basis(ss, robust_dT, Ea, f_soil, prm=prm)
+    else:
+        G, need, Fend, tau = season_basis(ss, Ea, f_soil, prm=prm)
     cands = [D for D in PRODUCTS if Fend[D] >= OPT["min_release_at_maturity"]]
     cost = {"urea": 1.0, **{D: cost_cr for D in PRODUCTS}}
     res = []
@@ -107,20 +120,22 @@ def round_recipe(keys, x, G, need, step=None):
     return best[0], ts * math.ceil(best[1] / ts)
 
 
-def best_recipe(ss, Ea=None, beta=None):
+def best_recipe(ss, Ea=None, beta=None, robust_dT=None):
     """优化并取整；单一控释期方案多用的氮不超过容差时优先选它（生产上 SKU 越少越好）。"""
     beta0 = P["beta"]
     if beta is not None:
         P["beta"] = beta
     try:
-        best, best1, ideal, G, need, Fend, tau = optimize(ss, Ea=Ea)
+        best, best1, ideal, G, need, Fend, tau = optimize(ss, Ea=Ea, robust_dT=robust_dT)
         r2, t2 = round_recipe(best[1], best[2], G, need)
         r1, t1 = round_recipe(best1[1], best1[2], G, need)
     finally:
         P["beta"] = beta0
+    pair, pair_total = r2, t2               # 不做“单档优先”取舍的两档方案（供 S 型两档情景使用）
     if t1 <= t2 * OPT["single_cr_tolerance"]:
         r2, t2 = r1, t1
-    return dict(rec=r2, total=t2, simple=r1, simple_total=t1, ideal=ideal), G, need, Fend, tau
+    return dict(rec=r2, total=t2, simple=r1, simple_total=t1, ideal=ideal,
+                pair=pair, pair_total=pair_total), G, need, Fend, tau
 
 
 def split_urea(ss, need, fr=None):

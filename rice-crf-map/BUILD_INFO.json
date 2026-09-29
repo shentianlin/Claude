@@ -1,13 +1,21 @@
 {
-  "source_commit": "11cd6a743c5f4f48049115b8f3df0e08244300f9",
-  "source_dirty_files": [],
-  "built_at_utc": "2026-09-27T09:45:45Z",
+  "source_commit": "08fcb7dc053fbf047428304bfecec307b44d1d4a",
+  "source_dirty_files": [
+    "common/env.js",
+    "common/env.py",
+    "rice-crf-map/build.py",
+    "rice-crf-map/crfmap/optimize.py",
+    "rice-crf-map/template.html",
+    "common/scenario.js",
+    "common/scenarios.py"
+  ],
+  "built_at_utc": "2026-09-29T21:15:59Z",
   "python": "3.11.15",
   "numpy": "2.4.6",
   "scipy": "1.17.1",
   "params_file": "params.toml",
   "outputs": {
-    "index.html": "7f0998644ad11e30db6dbbf2ee16c41d23149c4d18f691ee8b576f41112eb673",
-    "data.json": "e53607e07f1d6f210517b0f4fdf60e026b6df3e1297fa86c972abff2ca7ac17f"
+    "index.html": "987961529ddb3c2d7f63e2078d4e7ae5a0203b21a751e486862e6a611c66ae4a",
+    "data.json": "6e457575b02a055123bd68c8ebf18ec580a96b44440b69dc18e636645f20b829"
   }
 }
