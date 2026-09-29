@@ -1,15 +1,7 @@
 {
-  "source_commit": "08fcb7dc053fbf047428304bfecec307b44d1d4a",
-  "source_dirty_files": [
-    "common/env.js",
-    "common/env.py",
-    "rice-crf-map/build.py",
-    "rice-crf-map/crfmap/optimize.py",
-    "rice-crf-map/template.html",
-    "common/scenario.js",
-    "common/scenarios.py"
-  ],
-  "built_at_utc": "2026-09-29T21:15:59Z",
+  "source_commit": "3bbe905a1e99468208675c273c6ca153a20283fe",
+  "source_dirty_files": [],
+  "built_at_utc": "2026-09-29T21:19:42Z",
   "python": "3.11.15",
   "numpy": "2.4.6",
   "scipy": "1.17.1",
