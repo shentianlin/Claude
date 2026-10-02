@@ -1,6 +1,6 @@
 """控释肥形状参数 β 扫描：用田间释放模型（common/field_release.py）找对产量、环境最有利的 β。
 
-对每个稻季（73）、麦季，β 取 1.0–5.0，每个 β 都让产品自选最合适的控释期 D 和尿素比例
+对每个稻季（73）、麦季（33 区）、玉米季（28 区，见 maize.py），β 取 1.0–5.0，每个 β 都让产品自选最合适的控释期 D 和尿素比例
 （尿素 + 1 个控释档，与地图推荐结构相同），然后比较两件事：
 
 一、等氮比较（看增产）
@@ -16,7 +16,8 @@
     再用 common/env.py 计算氨挥发、N₂O、淋溶径流、温室气体和社会损害成本（同一组 Monte Carlo 抽样），
     并给出收获时未释放的氮。
 
-田间释放：水稻用 rice_flooded（旱直播稻季用 rice_dsr），小麦用 wheat_irrigated，施肥方式为混施入土、壤土。
+田间释放：水稻用 rice_flooded（旱直播稻季用 rice_dsr），小麦用 wheat_irrigated，玉米按各区的
+maize_open / maize_film 与土壤水分状态（雨养湿润、半干旱、灌溉）；施肥方式为混施入土、壤土。
 土温按种植系统预设，昼夜温差积分，冻土期停释（与模拟器一致）。
 
 运行：python analysis/beta_scan.py   （约 2–4 分钟；输出 analysis/beta_scan_results.csv、beta_scan.png 和汇总）
@@ -43,6 +44,10 @@ import env as ENV                          # noqa: E402
 import field_release as FR                 # noqa: E402
 import model as WM                         # noqa: E402
 from zones import ZONES as WZ              # noqa: E402
+sys.path.insert(0, str(ROOT / "analysis"))
+import maize as MZ                         # noqa: E402
+
+ENV.ZONE_TABLE["maize"] = MZ.ENV_ZONE
 
 BETAS = [1.0, 1.3, 1.6, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0]
 DS = list(range(30, 361, 10))
@@ -58,9 +63,13 @@ def setup(crop, zi, si):
     if crop == "rice":
         z = RZ[zi]; s = z["seasons"][si]; ss = r_setup(z, s); P = RP
         system = "rice_dsr" if s["est"] == "DSR" else "rice_flooded"
-    else:
+    elif crop == "wheat":
         z = WZ[zi]; s = z["seasons"][si]; ss = WM.season_setup(z, s); P = WM.P
         system = "wheat_irrigated"
+    else:
+        z = MZ.ZONES[zi]; s = z["seasons"][si]; ss = MZ.season_setup(z, s); P = MZ.P
+        system = s["system"]
+        ss["moist"] = s["moist"]
     return z, s, ss, P, system
 
 
@@ -77,7 +86,7 @@ def field_tau(ss, system, dT=0.0, mult=1.0):
     Ts = FR.soil_temperature(Tair, system, "incorporated")
     sysd = FR.SYSTEMS[system]
     aT = FR.temp_factor(Ts, sysd["amp"], FR.DEFAULTS["Ea"])
-    psi = FR.matric_potential(sysd["moisture"], n)
+    psi = FR.matric_potential(ss.get("moist", sysd["moisture"]), n)
     if "switch" in sysd:
         d0, reg = sysd["switch"]
         psi[d0:] = FR.matric_potential(reg, n - d0)
@@ -189,6 +198,7 @@ def run(args):
     z, s, ss, P, system = setup(crop, zi, si)
     mod = RO if crop == "rice" else WM
     frost = bool(np.min(ss["Tpaddy"]) < 3.0)
+    trop = bool(s.get("trop", False))
     out = []
     designs = {b: design(crop, ss, P, system, b, mod) for b in BETAS}
     N_ref = designs[1.3][0]
@@ -201,7 +211,7 @@ def run(args):
                     days=ss["L"] if crop == "rice" else s.get("days", ss["L"]))
         e = ENV.season_env(crop, z["id"], senv, np.random.default_rng(rng_seed))["scen"]["CRF"]
         row = dict(crop=crop, zone=z["id"], zone_name=z["name"], season=s["name"],
-                   mode=s.get("est", s.get("mode")), frost=frost, beta=b, uptake=round(ss["uptake_total"], 1),
+                   mode=s.get("est", s.get("mode", s.get("system"))), frost=frost, trop=trop, beta=b, uptake=round(ss["uptake_total"], 1),
                    fert_demand=round(ss["fert_demand"], 1),
                    N_req=round(tot, 1), N_req_pct=round(100 * tot / N_ref, 1), D_req=D, urea_req=round(100 * u),
                    unreleased_N=round(tot * (1 - u) * (1 - Fe), 1),
@@ -253,8 +263,9 @@ def plot(sums, path):
                                    "WenQuanYi Zen Hei", "SimHei", "Arial Unicode MS", "sans-serif"]
     plt.rcParams["axes.unicode_minus"] = False
     INK, INK2, GRID, SURF = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
-    C = {"水稻": "#2a78d6", "小麦·有冻土期": "#eb6834", "小麦·其他": "#1baf7a"}
-    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.3), facecolor=SURF, layout="constrained")
+    C = {"水稻": "#2a78d6", "小麦·有冻土期": "#eb6834", "小麦·其他": "#1baf7a",
+         "玉米·温带": "#4a3aa7", "玉米·热带亚热带": "#e87ba4"}
+    fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.6), facecolor=SURF, layout="constrained")
     panels = [("减氮 15% 时的产量损失估计（5 种条件平均，%）", "y85m"),
               ("减氮 15% 时最不利条件下的产量损失（%）", "y85w"),
               ("不断顿所需氮量（相对 β=1.3，%）", "N")]
@@ -278,6 +289,7 @@ def plot(sums, path):
 def main():
     jobs = [("rice", zi, si) for zi, z in enumerate(RZ) for si in range(len(z["seasons"]))]
     jobs += [("wheat", zi, si) for zi, z in enumerate(WZ) for si in range(len(z["seasons"]))]
+    jobs += [("maize", zi, 0) for zi in range(len(MZ.ZONES))]
     with Pool() as p:
         rows = [r for rs in p.map(run, jobs) for r in rs]
     with open(ROOT / "analysis" / "beta_scan_results.csv", "w", newline="", encoding="utf-8-sig") as f:
@@ -289,12 +301,18 @@ def main():
     sums["水稻"] = summarise([r for r in rows if r["crop"] == "rice"], "水稻")
     sums["小麦·有冻土期"] = summarise([r for r in rows if r["crop"] == "wheat" and r["frost"]], "小麦·有冻土期")
     sums["小麦·其他"] = summarise([r for r in rows if r["crop"] == "wheat" and not r["frost"]], "小麦·无冻土期")
+    sums["玉米·温带"] = summarise([r for r in rows if r["crop"] == "maize" and not r["trop"]], "玉米·温带")
+    sums["玉米·热带亚热带"] = summarise([r for r in rows if r["crop"] == "maize" and r["trop"]], "玉米·热带亚热带")
+    summarise([r for r in rows if r["crop"] == "maize"], "玉米·全部")
+    summarise([r for r in rows if r["crop"] == "maize" and r["mode"] == "maize_film"], "玉米·地膜")
     plot(sums, ROOT / "analysis" / "beta_scan.png")
 
     # 每季最好的 β：先看减氮 15% 时 5 种条件的平均产量损失，相差 < 0.2 个百分点的视为并列，再比所需氮量
     print("\n各季“最好的 β”分布（先比产量损失，并列时比所需氮量）")
     for crop, sel in (("水稻", lambda r: r["crop"] == "rice"), ("小麦·有冻土期", lambda r: r["crop"] == "wheat" and r["frost"]),
-                      ("小麦·无冻土期", lambda r: r["crop"] == "wheat" and not r["frost"])):
+                      ("小麦·无冻土期", lambda r: r["crop"] == "wheat" and not r["frost"]),
+                      ("玉米·温带", lambda r: r["crop"] == "maize" and not r["trop"]),
+                      ("玉米·热带亚热带", lambda r: r["crop"] == "maize" and r["trop"])):
         by = {}
         for r in rows:
             if sel(r):

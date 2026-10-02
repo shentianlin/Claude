@@ -37,11 +37,18 @@ RR = {
         LEACH=(0.27, 0.15, 0.40),   # Zhang et al. 2019（旱地玉米）: −27.1%，作为旱地作物代理
         CH4=(0.0, 0.0, 0.0),
     ),
+    # 玉米：旱地，与小麦同类证据；淋溶取 Zhang et al. 2019（玉米 −27.1%），NH3、N2O 取旱地作物 meta 分析的中间值
+    "maize": dict(
+        NH3=(0.30, 0.15, 0.45),     # Yang et al. 2021 全作物 −24–46%
+        N2O=(0.20, 0.08, 0.35),     # Lu et al. 2023 旱地作物约 −20%
+        LEACH=(0.27, 0.15, 0.40),   # Zhang et al. 2019
+        CH4=(0.0, 0.0, 0.0),
+    ),
 }
 
 # ---------------- 排放因子 ----------------
 # 普通尿素的氨挥发比例（中性土壤），土壤 pH 修正
-NH3_BASE = {"rice": (0.20, 0.12, 0.30), "wheat": (0.11, 0.06, 0.18)}
+NH3_BASE = {"rice": (0.20, 0.12, 0.30), "wheat": (0.11, 0.06, 0.18), "maize": (0.12, 0.06, 0.20)}
 PH_MULT = {"acid": 0.7, "neutral": 1.0, "alkaline": 1.4}
 # 直接 N2O（IPCC 2019 Refinement 表 11.1）
 EF1 = {"flooded": (0.004, 0.001, 0.008), "wet": (0.016, 0.013, 0.019), "dry": (0.005, 0.001, 0.011)}
@@ -114,6 +121,9 @@ WHEAT_ZONE = {
     "au-nsw": ("acid", "dry", "other"),
 }
 
+# 其他作物的分区表（土壤 pH 类别、气候、化肥产地），由调用方登记，如 ZONE_TABLE["maize"] = {...}
+ZONE_TABLE = {"wheat": WHEAT_ZONE}
+
 N_MC = 2000
 
 
@@ -130,7 +140,7 @@ def season_env(crop, zone_id, s, rng):
         ph, clim, prod, ch4reg = RICE_ZONE[zone_id]
         ef1_key, leach_key = "flooded", "paddy"
     else:
-        ph, clim, prod = WHEAT_ZONE[zone_id]
+        ph, clim, prod = ZONE_TABLE[crop][zone_id]
         ch4reg = None
         ef1_key, leach_key = clim, clim
     n = N_MC
