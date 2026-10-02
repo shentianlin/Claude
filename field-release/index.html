@@ -1,0 +1,352 @@
+<title>田间释放模拟器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;900&display=swap">
+<style>
+/* 布局：左侧参数栏 + 右侧结果（数字条、主曲线、两张小图、各系统对比表），下方为影响因素与依据 */
+:root{
+  --bg:#F2F5F3; --surface:#FBFCFB; --ink:#18221E; --muted:#56655E; --line:#D4DDD8; --chip:#E5ECE8;
+  --field:#1F6F78; --water:#8A9690; --soil:#A0522D; --air:#B9A48E; --mult:#1F6F78; --moist:#6C8EBF;
+  --good:#2F7D4F; --warn:#A96A12; --bad:#B5483B; --focus:#1F6F78;
+  --serif:"Noto Serif SC","Songti SC","STSong",serif;
+  --sans:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#111715; --surface:#18201D; --ink:#E3EBE7; --muted:#97A69F; --line:#2B3632; --chip:#222C28;
+    --field:#4FB3BD; --water:#7E8B85; --soil:#E08A5E; --air:#8E7C68; --mult:#4FB3BD; --moist:#8FB0E0;
+    --good:#5FBF83; --warn:#E0A043; --bad:#E07A6B; --focus:#4FB3BD;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#111715; --surface:#18201D; --ink:#E3EBE7; --muted:#97A69F; --line:#2B3632; --chip:#222C28;
+  --field:#4FB3BD; --water:#7E8B85; --soil:#E08A5E; --air:#8E7C68; --mult:#4FB3BD; --moist:#8FB0E0;
+  --good:#5FBF83; --warn:#E0A043; --bad:#E07A6B; --focus:#4FB3BD;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6;padding-inline:16px;padding-block:0 48px}
+.wrap{max-width:1240px;margin:0 auto}
+h1,h2,h3{font-family:var(--serif);text-wrap:balance;margin:0;line-height:1.25}
+h1{font-size:clamp(26px,3.8vw,40px);font-weight:900}
+h2{font-size:22px;font-weight:900}
+h3{font-size:16px;font-weight:600}
+p{margin:0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.note{font-size:13px;color:var(--muted)}
+.eyebrow{font-size:12px;letter-spacing:.12em;color:var(--muted)}
+header{padding-block:28px 18px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+header .lede{max-width:70ch;color:var(--muted)}
+.app{display:grid;grid-template-columns:minmax(260px,320px) 1fr;gap:28px;padding-block:22px}
+.ctrl{display:flex;flex-direction:column;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px;align-self:start}
+.ctrl fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.ctrl legend{font-family:var(--serif);font-weight:600;font-size:15px;margin-bottom:4px;padding:0}
+.ctrl label{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted)}
+.ctrl label .row{display:flex;justify-content:space-between;gap:8px}
+.ctrl label b{color:var(--ink);font-family:var(--mono);font-weight:500}
+select,input[type=range],input[type=date]{font:inherit;font-size:14px;width:100%;color:var(--ink)}
+select,input[type=date]{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+input[type=range]{accent-color:var(--field)}
+select:focus-visible,input:focus-visible,button:focus-visible,tr:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.out{display:flex;flex-direction:column;gap:20px;min-width:0}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.tile{padding:12px 14px 12px 0;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile + .tile{padding-left:14px;border-left:1px solid var(--line)}
+.tile b{font-family:var(--mono);font-size:26px;font-weight:500;line-height:1.15}
+.tile span{font-size:12px;color:var(--muted)}
+.tile .delta{font-size:12px;font-family:var(--mono)}
+.up{color:var(--bad)} .down{color:var(--good)}
+.chart{position:relative;min-width:0}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:4px}
+.legend i{display:inline-block;width:16px;height:0;border-top:2px solid;margin-right:5px;vertical-align:3px}
+.axis text{fill:var(--muted);font-family:var(--mono);font-size:11px}
+.axis path,.axis line{stroke:var(--line)}
+.gridl line{stroke:var(--line);stroke-dasharray:2 3}
+.gridl path{display:none}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.15);white-space:nowrap}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--muted);font-weight:500;font-size:12px}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+#sysTbl tbody tr{cursor:pointer}
+#sysTbl tbody tr:hover{background:var(--chip)}
+#sysTbl tbody tr.cur{background:var(--chip);font-weight:700}
+.bar{display:inline-block;height:8px;background:var(--field);border-radius:2px;vertical-align:middle}
+section{padding-block:18px 6px}
+.factors td:first-child{white-space:nowrap;font-weight:500}
+.refs li{font-size:13px;margin-bottom:4px}
+a{color:var(--field)}
+.formula{font-family:var(--mono);font-size:13px;background:var(--chip);padding:10px 12px;border-radius:6px;overflow-x:auto;white-space:pre}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.cols p,.cols li{max-width:68ch}
+@media (max-width:900px){
+  .app,.pair,.cols{grid-template-columns:1fr}
+  .tiles{grid-template-columns:1fr 1fr}
+  .tile:nth-child(3){padding-left:0;border-left:0}
+  .tile:nth-child(n+3){border-top:1px solid var(--line)}
+}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">包膜尿素 · 从 25 °C 静水到田间</div>
+  <h1>田间释放模拟器</h1>
+  <p class="lede">同一个包膜尿素，放进淹水稻田、越冬麦田或覆膜玉米地，释放快慢可以差好几周。选好地点、种植系统和施肥方式，看产品在田间什么时候放到 50% 和 80%，以及是哪些因素在起作用。</p>
+</header>
+
+<div class="app">
+  <form class="ctrl" id="ctrl" onsubmit="return false">
+    <fieldset>
+      <legend>地点与农时</legend>
+      <label for="site">代表站（来自稻、麦两张配方地图）<select id="site"></select></label>
+      <label for="app"><span class="row">施肥日<b id="appV"></b></span><input id="app" type="date"></label>
+      <label for="days"><span class="row">模拟天数<b id="daysV"></b></span><input id="days" type="range" min="30" max="360" step="5"></label>
+    </fieldset>
+    <fieldset>
+      <legend>田间条件</legend>
+      <label for="sys">种植系统<select id="sys"></select></label>
+      <label for="place">施肥方式<select id="place"></select></label>
+      <label for="surf" id="surfL"><span class="row">表施加速系数<b id="surfV"></b></span><input id="surf" type="range" min="1.5" max="5" step="0.1"></label>
+      <label for="tex">土壤质地<select id="tex"></select></label>
+    </fieldset>
+    <fieldset>
+      <legend>产品（25 °C 静水实测参数）</legend>
+      <label for="D"><span class="row">控释期 D（静水 80%）<b id="DV"></b></span><input id="D" type="range" min="30" max="360" step="10"></label>
+      <label for="beta"><span class="row">形状参数 β<b id="betaV"></b></span><input id="beta" type="range" min="0.8" max="4" step="0.1"></label>
+      <label for="f0"><span class="row">初期溶出 f₀<b id="f0V"></b></span><input id="f0" type="range" min="0" max="15" step="0.5"></label>
+      <label for="Ea"><span class="row">表观活化能 Ea<b id="EaV"></b></span><input id="Ea" type="range" min="30" max="80" step="1"></label>
+      <label for="s"><span class="row">水分敏感度 s<b id="sV"></b></span><input id="s" type="range" min="0" max="0.8" step="0.05"></label>
+      <label for="dmg"><span class="row">包膜破损率<b id="dmgV"></b></span><input id="dmg" type="range" min="0" max="15" step="0.5"></label>
+      <p class="note">D、β、f₀、Ea 可用仓库里的 tools/fit_release.py 从实测曲线拟合得到。</p>
+    </fieldset>
+  </form>
+
+  <div class="out">
+    <div class="tiles" id="tiles"></div>
+    <div class="chart" id="mainBox">
+      <h3>累计释放：田间 vs 25 °C 静水</h3>
+      <svg id="main"></svg>
+      <div class="legend"><span><i style="border-color:var(--field)"></i>田间预测</span><span><i style="border-color:var(--water);border-top-style:dashed"></i>25 °C 静水（标称）</span></div>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <div class="pair">
+      <div class="chart">
+        <h3>包膜处温度（°C）</h3>
+        <svg id="temp"></svg>
+        <div class="legend"><span><i style="border-color:var(--soil)"></i>包膜处日均温</span><span><i style="border-color:var(--air)"></i>气温</span></div>
+      </div>
+      <div class="chart">
+        <h3>日释放速率（相对 25 °C 静水的倍数）</h3>
+        <svg id="rate"></svg>
+        <div class="legend"><span><i style="border-color:var(--mult)"></i>综合速率倍数</span><span><i style="border-color:var(--moist);border-top-style:dashed"></i>其中水分因子</span></div>
+      </div>
+    </div>
+    <div>
+      <h3>同一产品、同一地点，换种植系统</h3>
+      <p class="note" style="margin:2px 0 8px">点击一行即切换到该系统。施肥方式、质地等其他条件保持当前设置。</p>
+      <div class="scroll"><table id="sysTbl"><thead><tr><th>种植系统</th><th class="n">达 50%</th><th class="n">达 80%</th><th>相对静水快慢</th><th class="n">模拟期末</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<section>
+  <h2 style="margin-bottom:10px">影响田间释放的因素</h2>
+  <div class="scroll">
+  <table class="factors">
+    <thead><tr><th>因素</th><th>怎么起作用</th><th>模型中的处理</th><th>影响大小</th><th>依据</th></tr></thead>
+    <tbody>
+      <tr><td>温度</td><td>水分渗入、尿素溶出与扩散都随温度加快</td><td>按包膜处温度的 Arrhenius 关系，并对昼夜波动积分</td><td>最大：每升高 10 °C 约快 1 倍</td><td>Golden 2011；El-Hout 2021；Pang 2026</td></tr>
+      <tr><td>昼夜温差</td><td>速率随温度呈凸函数，波动越大，日平均速率越高</td><td>按 24 小时正弦温度积分</td><td>日均 20 °C 时，半幅 10 °C 约快 11%</td><td>Ransom 2020（恒温与变温差异明显）</td></tr>
+      <tr><td>冻结</td><td>水分冻结后无法扩散进颗粒，释放停止；颗粒不会冻裂</td><td>土温 0–3 °C 线性降到 0</td><td>越冬作物很大</td><td>ESN 产品资料</td></tr>
+      <tr><td>土壤水分</td><td>颗粒吸水变慢，滞后期延长；适宜生长的湿度范围内几乎无影响</td><td>按基质势：−33 kPa 以上为 1，到 −1500 kPa 降到 1 − s</td><td>干旱时推迟可达约 30 天，与膜材有关</td><td>Verburg 2020；Sentek 2023；Ransom 2020</td></tr>
+      <tr><td>施肥位置</td><td>表施时日晒高温、干湿交替，包膜老化快；条施颗粒集中，扩散受限</td><td>表施 ×2.5（可调）并按地表温度；条施 ×0.85</td><td>表施可快 3 倍以上</td><td>Ransom 2020；Janke 2022</td></tr>
+      <tr><td>种植方式造成的土温差</td><td>淹水层保温、地膜增温、秸秆覆盖和冠层遮阴降温</td><td>各种植系统设定土温偏移</td><td>地膜前 60–90 天增温 2–4 °C</td><td>Liu 2023；Wang 2015；Bo 2020</td></tr>
+      <tr><td>土壤质地</td><td>黏土含水量高、与颗粒接触面大，吸水快</td><td>黏土 ×1.15、砂土 ×0.95</td><td>小，且各研究不一致</td><td>Golden 2011；Janke 2022；Sentek 2023</td></tr>
+      <tr><td>包膜破损</td><td>运输、掺混磨损的颗粒施下即溶</td><td>破损比例计入初期溶出</td><td>每 1% 破损约多 1% 速效氮</td><td>ESN 使用说明（掺混宜最后加入、时间宜短）</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="cols">
+  <div>
+    <h3>模型</h3>
+    <div class="formula" style="margin:8px 0">dτ/dt = a_T · a_W · a_P · a_S · f_soil       （每天累计的 25 °C 等效天数）
+a_T = 一天 24 小时 Arrhenius(T) × 冻结因子 的平均
+F(τ) = f₀' + (1 − f₀')·[1 − exp(−(τ/λ)^β)]，F(D) = 80%
+f₀'  = f₀ + (1 − f₀)·破损率</div>
+    <p>“不同作物不一样”，本质上是不同作物的栽培方式带来的温度、水分和施肥位置不同。水稻淹水，冬小麦越冬冻土，玉米常覆膜，免耕地表有秸秆。所以模型按种植系统给出预设，同一作物的不同栽培方式会落在不同预设上。</p>
+    <p style="margin-top:8px">土壤中相对静水的基础系数取 0.9，与稻、麦两张配方地图一致。气温由各代表站的月均温插值得到。</p>
+  </div>
+  <div>
+    <h3>局限</h3>
+    <ul>
+      <li>水分状态是典型情景，不是逐日降雨模拟。正式应用应接入逐日气象和土壤水分数据。</li>
+      <li>表施系数、质地系数只有少数研究支撑，不确定性大；表施在 Ransom 2020 中观察到 35 天内放完，比默认设置还快。</li>
+      <li>假设温度只改变快慢、不改变曲线形状。S 型产品的滞后期是否也满足这一点，需要低温实测。</li>
+      <li>没有考虑包膜生物降解、土壤 pH、离子强度等次要因素。</li>
+    </ul>
+    <h3 style="margin-top:14px">文献</h3>
+    <ol class="refs">
+      <li>Ransom et al. 2020. <a href="https://consensus.app/papers/details/bf1fcd9b709952e09000b97aeb0ca038/" target="_blank" rel="noopener">N release rates from slow- and controlled-release fertilizers influenced by placement and temperature</a>. PLoS ONE.</li>
+      <li>Verburg et al. 2020. <a href="https://consensus.app/papers/details/b9624a9bd8195a5f89f770272ef79a24/" target="_blank" rel="noopener">Understanding soil water effects on nitrogen release from controlled-release fertilizers</a>. SSSAJ.</li>
+      <li>Sentek et al. 2023. <a href="https://consensus.app/papers/details/c87c14d09c3a5471a9231539918c1a34/" target="_blank" rel="noopener">Nitrogen release from different polymer-coated urea fertilizers in soil is affected by soil properties</a>. Soil Use Manage.</li>
+      <li>Golden et al. 2011. <a href="https://consensus.app/papers/details/cddf95c0b8725328951b47218ece96c2/" target="_blank" rel="noopener">N release from ESN as influenced by soil series, temperature, moisture, and incubation method</a>. Commun Soil Sci Plant Anal.</li>
+      <li>Janke et al. 2022. <a href="https://consensus.app/papers/details/332061d95d93549ab0c4d52f6445fdff/" target="_blank" rel="noopener">The impact of banding polymer-coated urea on N availability and distribution in contrasting soils</a>. J Soil Sci Plant Nutr.</li>
+      <li>El-Hout et al. 2021. <a href="https://consensus.app/papers/details/1be5b8dc9e7050dab915d6e2b0211d83/" target="_blank" rel="noopener">N release from polymer-coated urea: effect of seasons and growing degree-days</a>. Crops and Soils.</li>
+      <li>Liu et al. 2023. <a href="https://consensus.app/papers/details/a31449dee3b659cbbd154452a91b7ee0/" target="_blank" rel="noopener">N fertilizer scheme for spring maize in full-film double-ridge furrow</a>. Agric Water Manage.</li>
+      <li>Bo et al. 2020. <a href="https://consensus.app/papers/details/23f4f0577d48581788f92ec77da84f80/" target="_blank" rel="noopener">Plastic-film mulching patterns for maize in sub-humid northeast China</a>. Irrigation Sci.</li>
+      <li>Pang et al. 2026. <a href="https://consensus.app/papers/details/ec81161c1fb25b129997ae96b5dc1fd9/" target="_blank" rel="noopener">Controlled release mechanism of starch-based polyurethane coated urea</a>. Environ Technol Innov.</li>
+      <li><a href="https://smartnitrogen.com/smart-talk/busting-the-myths-around-esn-polymer-coating-edition/" target="_blank" rel="noopener">ESN polymer coating: handling, blending and freezing</a>. Nutrien.</li>
+    </ol>
+  </div>
+</section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+const M={"DEFAULTS": {"Ea": 50.0, "f0": 0.03, "beta": 1.3, "f_soil": 0.9, "moisture_sens": 0.25, "damage": 0.02}, "MOISTURE": {"flooded": {"label": "淹水", "flood": true}, "awd": {"label": "干湿交替灌溉（落干到约 −20 kPa）", "wet": -1.0, "dry": -20.0, "period": 10}, "irrigated": {"label": "灌溉旱地（−10 ~ −80 kPa）", "wet": -10.0, "dry": -80.0, "period": 10}, "humid": {"label": "雨养·湿润（−10 ~ −300 kPa）", "wet": -10.0, "dry": -300.0, "period": 14}, "semiarid": {"label": "雨养·半干旱（−50 ~ −1200 kPa）", "wet": -50.0, "dry": -1200.0, "period": 20}}, "SYSTEMS": {"rice_flooded": {"label": "水稻·淹水（移栽或水直播）", "offset": {"base": 1.0}, "amp": 2.5, "moisture": "flooded"}, "rice_awd": {"label": "水稻·干湿交替灌溉", "offset": {"base": 1.0}, "amp": 3.5, "moisture": "awd"}, "rice_dsr": {"label": "水稻·旱直播，约 30 天后淹水", "offset": {"base": 1.0}, "amp": 4.0, "moisture": "humid", "switch": [30, "flooded"]}, "wheat_irrigated": {"label": "小麦·灌溉", "offset": {"base": 1.0}, "amp": 4.0, "moisture": "irrigated"}, "wheat_rainfed": {"label": "小麦·旱作", "offset": {"base": 1.0}, "amp": 5.0, "moisture": "semiarid"}, "maize_open": {"label": "玉米·露地", "offset": {"base": 1.0}, "amp": 4.5, "moisture": "humid"}, "maize_film": {"label": "玉米·地膜覆盖", "offset": {"early": 3.5, "until": 60, "late": 1.0, "ramp": 40}, "amp": 6.0, "moisture": "irrigated"}, "notill_residue": {"label": "免耕·秸秆覆盖", "offset": {"early": -1.0, "until": 45, "late": 0.0, "ramp": 0}, "amp": 3.0, "moisture": "humid"}}, "PLACEMENT": {"incorporated": {"label": "撒施后混入土壤", "factor": 1.0, "dT": 0.0, "amp": null}, "band": {"label": "条施 / 侧深施", "factor": 0.85, "dT": 0.0, "amp": null}, "surface": {"label": "表面撒施不覆土", "factor": 2.5, "dT": 2.0, "amp": 10.0}}, "TEXTURE": {"clay": {"label": "黏土", "factor": 1.15}, "loam": {"label": "壤土", "factor": 1.0}, "sand": {"label": "砂土", "factor": 0.95}}}, SITES=[{"id": "r-cn-hlj", "country": "中国", "name": "东北寒地（黑龙江）", "station": "哈尔滨", "crop": "水稻", "season": "一季粳稻", "T": [-17.6, -12.9, -3.6, 7.2, 15.1, 20.8, 23.1, 21.3, 15.2, 6.0, -5.1, -14.1], "app": "05-20", "days": 125, "system": "rice_flooded"}, {"id": "r-cn-jl", "country": "中国", "name": "东北中南部（吉林、辽宁）", "station": "沈阳", "crop": "水稻", "season": "一季粳稻", "T": [-11.0, -6.6, 1.6, 10.6, 17.6, 22.4, 24.9, 24.1, 18.3, 10.6, 1.3, -7.3], "app": "05-20", "days": 135, "system": "rice_flooded"}, {"id": "r-cn-hh", "country": "中国", "name": "黄淮稻麦两熟区", "station": "徐州", "crop": "水稻", "season": "麦茬粳稻（机插）", "T": [0.8, 3.5, 8.8, 15.4, 21.1, 25.8, 27.3, 26.5, 22.0, 16.2, 9.1, 2.9], "app": "06-15", "days": 130, "system": "rice_flooded"}, {"id": "r-cn-lyz", "country": "中国", "name": "长江下游（苏南、浙北、皖东）", "station": "南京", "crop": "水稻", "season": "单季晚粳（机插）", "T": [2.9, 5.1, 9.6, 15.8, 21.3, 24.9, 28.2, 27.7, 23.5, 17.8, 11.3, 5.0], "app": "06-15", "days": 135, "system": "rice_flooded"}, {"id": "r-cn-myz", "country": "中国", "name": "长江中游单季稻区（鄂、皖、赣北）", "station": "武汉", "crop": "水稻", "season": "一季中稻（杂交籼稻）", "T": [4.0, 6.6, 11.0, 17.2, 22.4, 26.3, 29.1, 28.4, 24.1, 18.3, 11.8, 6.1], "app": "05-20", "days": 120, "system": "rice_flooded"}, {"id": "r-cn-hn", "country": "中国", "name": "长江中游双季稻区（湘、赣）", "station": "长沙", "crop": "水稻", "season": "双季早稻", "T": [4.9, 7.0, 11.0, 17.1, 22.0, 25.8, 29.3, 28.5, 24.4, 18.9, 12.9, 7.3], "app": "04-25", "days": 85, "system": "rice_flooded"}, {"id": "r-cn-hs", "country": "中国", "name": "华南双季稻区（粤、桂、闽南）", "station": "广州", "crop": "水稻", "season": "早造", "T": [13.6, 15.1, 18.3, 22.4, 25.9, 27.8, 28.8, 28.6, 27.4, 24.8, 20.3, 15.5], "app": "03-25", "days": 105, "system": "rice_flooded"}, {"id": "r-cn-sc", "country": "中国", "name": "西南盆地（川、渝）", "station": "成都", "crop": "水稻", "season": "一季中稻（杂交籼稻）", "T": [5.6, 7.6, 11.6, 16.8, 21.4, 24.1, 25.8, 25.4, 21.8, 17.5, 12.3, 7.3], "app": "05-10", "days": 115, "system": "rice_flooded"}, {"id": "r-cn-yn", "country": "中国", "name": "云贵高原粳稻区", "station": "昆明", "crop": "水稻", "season": "高原一季粳稻", "T": [8.9, 10.9, 14.4, 17.6, 19.8, 20.3, 20.3, 19.9, 18.5, 15.9, 12.3, 9.1], "app": "05-01", "days": 145, "system": "rice_flooded"}, {"id": "r-jp", "country": "日本", "name": "日本本州（新潟、东北）", "station": "新潟", "crop": "水稻", "season": "越光等优质粳稻", "T": [2.8, 2.9, 5.8, 11.2, 16.3, 20.4, 24.5, 26.6, 22.7, 16.6, 10.5, 5.4], "app": "05-10", "days": 125, "system": "rice_flooded"}, {"id": "r-kr", "country": "韩国", "name": "韩国中西部平原", "station": "大田", "crop": "水稻", "season": "一季粳稻", "T": [-1.0, 1.2, 6.3, 12.9, 18.2, 22.6, 25.5, 25.7, 20.9, 14.3, 7.2, 0.9], "app": "05-25", "days": 135, "system": "rice_flooded"}, {"id": "r-tw", "country": "中国台湾", "name": "台湾嘉南平原", "station": "嘉义", "crop": "水稻", "season": "一期作", "T": [16.5, 17.2, 19.7, 23.2, 26.2, 27.9, 28.8, 28.4, 27.3, 24.9, 21.7, 18.1], "app": "02-20", "days": 120, "system": "rice_flooded"}, {"id": "r-in-pb", "country": "印度", "name": "印度旁遮普—哈里亚纳", "station": "卢迪亚纳", "crop": "水稻", "season": "Kharif 高产籼稻（PR 系）", "T": [12.9, 15.6, 20.5, 26.4, 31.2, 32.2, 30.3, 29.7, 28.6, 25.0, 19.2, 14.3], "app": "06-20", "days": 115, "system": "rice_flooded"}, {"id": "r-in-bh", "country": "印度", "name": "印度恒河平原东部（比哈尔、北方邦东）", "station": "巴特那", "crop": "水稻", "season": "Kharif 季稻", "T": [16.0, 19.4, 24.8, 30.0, 31.9, 31.4, 29.4, 29.2, 28.9, 26.7, 21.7, 17.3], "app": "07-15", "days": 110, "system": "rice_flooded"}, {"id": "r-in-wb", "country": "印度", "name": "印度西孟加拉", "station": "加尔各答", "crop": "水稻", "season": "Aman 雨季稻", "T": [19.9, 23.0, 27.4, 30.2, 30.8, 30.4, 29.3, 29.1, 29.2, 27.9, 24.1, 20.5], "app": "07-25", "days": 115, "system": "rice_flooded"}, {"id": "r-in-cg", "country": "印度", "name": "印度东部高原（奥里萨、恰蒂斯加尔）", "station": "赖布尔", "crop": "水稻", "season": "Kharif 雨养稻", "T": [20.8, 23.6, 28.3, 32.3, 34.8, 31.4, 27.6, 27.1, 27.9, 26.5, 22.6, 20.1], "app": "07-15", "days": 110, "system": "rice_flooded"}, {"id": "r-in-ap", "country": "印度", "name": "印度戈达瓦里—克里希纳三角洲", "station": "拉贾蒙德里", "crop": "水稻", "season": "Kharif 季", "T": [24.5, 26.7, 29.3, 31.8, 33.5, 31.4, 29.0, 28.7, 28.7, 28.0, 26.0, 24.3], "app": "08-01", "days": 120, "system": "rice_flooded"}, {"id": "r-in-tn", "country": "印度", "name": "印度泰米尔纳德高韦里三角洲", "station": "坦贾武尔", "crop": "水稻", "season": "Kuruvai 短季稻", "T": [25.4, 26.8, 28.9, 30.9, 31.9, 30.8, 29.9, 29.5, 29.3, 28.0, 26.4, 25.4], "app": "06-20", "days": 95, "system": "rice_flooded"}, {"id": "r-bd", "country": "孟加拉国", "name": "孟加拉国中部", "station": "达卡", "crop": "水稻", "season": "Boro 旱季稻", "T": [18.6, 21.8, 26.1, 28.6, 28.8, 28.9, 28.8, 29.0, 28.7, 27.2, 23.8, 20.1], "app": "01-25", "days": 110, "system": "rice_flooded"}, {"id": "r-pk-pb", "country": "巴基斯坦", "name": "巴基斯坦旁遮普", "station": "拉合尔", "crop": "水稻", "season": "巴斯马蒂香稻", "T": [12.8, 15.6, 20.6, 26.6, 31.3, 33.9, 31.5, 30.7, 29.6, 25.4, 19.1, 14.2], "app": "07-10", "days": 110, "system": "rice_flooded"}, {"id": "r-pk-sd", "country": "巴基斯坦", "name": "巴基斯坦信德", "station": "拉尔卡纳", "crop": "水稻", "season": "粗粒籼稻（IRRI-6、杂交稻）", "T": [14.6, 17.9, 24.0, 29.9, 34.5, 35.9, 34.5, 32.8, 31.2, 27.6, 21.4, 16.2], "app": "06-15", "days": 115, "system": "rice_flooded"}, {"id": "r-np", "country": "尼泊尔", "name": "尼泊尔特莱平原", "station": "拜拉瓦", "crop": "水稻", "season": "雨季稻", "T": [15.7, 18.3, 23.6, 28.4, 30.4, 30.4, 29.4, 29.3, 28.4, 25.7, 21.0, 16.8], "app": "07-10", "days": 115, "system": "rice_flooded"}, {"id": "r-lk", "country": "斯里兰卡", "name": "斯里兰卡干旱区", "station": "波隆纳鲁沃", "crop": "水稻", "season": "Maha 主季", "T": [25.0, 25.8, 27.4, 28.6, 29.4, 29.3, 29.0, 29.0, 28.8, 27.7, 26.3, 25.3], "app": "10-25", "days": 105, "system": "rice_flooded"}, {"id": "r-mm", "country": "缅甸", "name": "缅甸伊洛瓦底三角洲", "station": "勃生", "crop": "水稻", "season": "雨季稻", "T": [24.8, 26.4, 28.5, 30.0, 28.9, 27.0, 26.4, 26.3, 26.8, 27.3, 26.8, 25.0], "app": "07-15", "days": 115, "system": "rice_flooded"}, {"id": "r-th-c", "country": "泰国", "name": "泰国中部平原", "station": "素攀武里", "crop": "水稻", "season": "雨季灌溉稻", "T": [26.5, 28.4, 29.9, 31.0, 30.3, 29.6, 29.2, 28.9, 28.6, 28.2, 27.3, 25.9], "app": "06-01", "days": 110, "system": "rice_flooded"}, {"id": "r-th-ne", "country": "泰国", "name": "泰国东北部", "station": "孔敬", "crop": "水稻", "season": "雨养茉莉香米（KDML105）", "T": [22.4, 25.2, 28.2, 29.6, 29.0, 28.7, 28.2, 27.8, 27.4, 26.6, 24.8, 22.5], "app": "08-01", "days": 105, "system": "rice_flooded"}, {"id": "r-vn-m", "country": "越南", "name": "越南湄公河三角洲", "station": "芹苴", "crop": "水稻", "season": "冬春季", "T": [25.6, 26.3, 27.6, 28.6, 28.3, 27.6, 27.3, 27.2, 27.1, 27.0, 26.9, 25.8], "app": "12-05", "days": 100, "system": "rice_flooded"}, {"id": "r-vn-r", "country": "越南", "name": "越南红河三角洲", "station": "河内", "crop": "水稻", "season": "春季稻", "T": [16.6, 17.3, 20.1, 23.9, 27.3, 29.0, 29.2, 28.7, 27.7, 25.3, 22.0, 18.2], "app": "02-15", "days": 115, "system": "rice_flooded"}, {"id": "r-kh", "country": "柬埔寨", "name": "柬埔寨湄公—洞里萨平原", "station": "波萝勉", "crop": "水稻", "season": "雨季香稻（Phka Rumduol）", "T": [26.5, 27.8, 29.3, 30.2, 29.8, 28.8, 28.4, 28.3, 28.0, 27.6, 27.0, 26.1], "app": "07-25", "days": 115, "system": "rice_flooded"}, {"id": "r-ph", "country": "菲律宾", "name": "菲律宾中吕宋", "station": "甲万那端", "crop": "水稻", "season": "雨季稻", "T": [25.2, 25.8, 27.2, 29.0, 29.6, 28.6, 27.7, 27.4, 27.4, 27.2, 26.7, 25.6], "app": "07-01", "days": 100, "system": "rice_flooded"}, {"id": "r-id", "country": "印度尼西亚", "name": "印尼爪哇北岸", "station": "加拉璜", "crop": "水稻", "season": "雨季（MT1）", "T": [26.4, 26.4, 26.9, 27.5, 27.6, 27.1, 26.9, 27.2, 27.7, 28.0, 27.6, 26.9], "app": "12-05", "days": 100, "system": "rice_flooded"}, {"id": "r-my", "country": "马来西亚", "name": "马来西亚穆达灌区", "station": "亚罗士打", "crop": "水稻", "season": "主季", "T": [26.6, 27.3, 28.0, 28.2, 27.8, 27.4, 27.0, 26.9, 26.7, 26.6, 26.5, 26.4], "app": "09-01", "days": 110, "system": "rice_flooded"}, {"id": "r-ir", "country": "伊朗", "name": "伊朗里海沿岸", "station": "萨里", "crop": "水稻", "season": "香稻（Tarom/Hashemi）", "T": [7.8, 8.4, 10.6, 15.2, 20.4, 24.6, 26.9, 26.8, 23.6, 18.6, 13.2, 9.5], "app": "05-10", "days": 100, "system": "rice_flooded"}, {"id": "r-eg", "country": "埃及", "name": "埃及尼罗河三角洲", "station": "卡夫尔谢赫", "crop": "水稻", "season": "粳稻（Giza/Sakha 系）", "T": [13.4, 14.0, 16.1, 19.3, 22.7, 25.6, 27.0, 27.5, 26.0, 23.3, 19.1, 15.1], "app": "06-01", "days": 120, "system": "rice_flooded"}, {"id": "r-sn", "country": "塞内加尔", "name": "塞内加尔河谷", "station": "里夏尔托勒", "crop": "水稻", "season": "雨季稻", "T": [22.5, 24.3, 26.4, 27.8, 29.5, 30.8, 30.5, 29.9, 29.9, 29.5, 26.8, 23.2], "app": "08-01", "days": 115, "system": "rice_flooded"}, {"id": "r-ml", "country": "马里", "name": "马里尼日尔河灌区", "station": "尼奥诺", "crop": "水稻", "season": "雨季灌溉稻", "T": [22.5, 25.6, 29.5, 32.3, 33.4, 31.6, 28.8, 27.4, 28.1, 29.0, 26.4, 23.1], "app": "07-20", "days": 110, "system": "rice_flooded"}, {"id": "r-ng", "country": "尼日利亚", "name": "尼日利亚北部", "station": "比尔宁凯比", "crop": "水稻", "season": "雨季低地稻", "T": [23.3, 26.3, 30.2, 32.9, 32.3, 29.5, 27.3, 26.5, 27.2, 28.4, 26.5, 23.8], "app": "07-15", "days": 110, "system": "rice_flooded"}, {"id": "r-tz", "country": "坦桑尼亚", "name": "坦桑尼亚基隆贝罗—莫罗戈罗", "station": "基隆贝罗", "crop": "水稻", "season": "雨养低地稻", "T": [25.6, 25.6, 25.3, 24.4, 23.1, 21.5, 21.0, 21.8, 23.4, 25.0, 26.1, 26.1], "app": "01-20", "days": 115, "system": "rice_flooded"}, {"id": "r-mg", "country": "马达加斯加", "name": "马达加斯加阿劳特拉湖", "station": "安巴通德拉扎卡", "crop": "水稻", "season": "雨季稻", "T": [23.5, 23.5, 23.1, 21.9, 19.8, 17.6, 16.8, 17.3, 19.1, 21.4, 23.0, 23.5], "app": "12-20", "days": 125, "system": "rice_flooded"}, {"id": "r-it", "country": "意大利", "name": "意大利波河平原", "station": "韦尔切利", "crop": "水稻", "season": "水直播粳稻", "T": [1.0, 3.3, 8.1, 12.4, 17.2, 21.4, 23.8, 23.0, 18.6, 12.8, 6.8, 2.0], "app": "04-28", "days": 145, "system": "rice_flooded"}, {"id": "r-es", "country": "西班牙", "name": "西班牙瓜达尔基维尔河谷", "station": "塞维利亚", "crop": "水稻", "season": "水直播稻", "T": [10.9, 12.4, 15.2, 17.2, 20.8, 25.1, 28.1, 28.1, 24.9, 20.0, 14.8, 11.8], "app": "05-10", "days": 140, "system": "rice_flooded"}, {"id": "r-ru", "country": "俄罗斯", "name": "俄罗斯克拉斯诺达尔", "station": "克拉斯诺达尔", "crop": "水稻", "season": "水直播粳稻", "T": [-0.5, 0.5, 5.5, 11.9, 17.3, 21.4, 24.0, 23.4, 18.1, 11.8, 5.8, 1.4], "app": "05-05", "days": 125, "system": "rice_flooded"}, {"id": "r-us-ar", "country": "美国", "name": "美国中南部（阿肯色、密西西比）", "station": "斯图加特", "crop": "水稻", "season": "旱直播长粒稻（晚淹水）", "T": [4.6, 7.1, 12.1, 17.2, 22.2, 26.4, 27.9, 27.2, 23.5, 17.4, 11.3, 6.1], "app": "04-15", "days": 135, "system": "rice_dsr"}, {"id": "r-us-la", "country": "美国", "name": "美国墨西哥湾沿岸（路易斯安那、得克萨斯）", "station": "克劳利", "crop": "水稻", "season": "主季稻（可留再生）", "T": [11.2, 13.1, 16.8, 20.3, 24.6, 27.4, 28.3, 28.2, 26.2, 21.4, 15.8, 12.3], "app": "03-25", "days": 125, "system": "rice_dsr"}, {"id": "r-us-ca", "country": "美国", "name": "美国加州萨克拉门托河谷", "station": "科卢萨", "crop": "水稻", "season": "水直播中粒粳稻", "T": [7.9, 10.3, 12.8, 15.4, 19.6, 23.4, 25.2, 24.4, 22.4, 17.8, 11.6, 7.6], "app": "05-05", "days": 145, "system": "rice_flooded"}, {"id": "r-br", "country": "巴西", "name": "巴西南里奥格兰德", "station": "南卡舒埃拉", "crop": "水稻", "season": "灌溉旱直播稻", "T": [24.6, 24.1, 22.4, 18.9, 15.4, 12.7, 12.5, 14.0, 15.7, 18.5, 21.1, 23.4], "app": "10-15", "days": 135, "system": "rice_dsr"}, {"id": "r-uy", "country": "乌拉圭", "name": "乌拉圭东部", "station": "特雷因塔伊特雷斯", "crop": "水稻", "season": "灌溉旱直播稻", "T": [22.4, 21.9, 20.2, 16.8, 13.6, 10.9, 10.5, 11.5, 13.1, 15.7, 18.4, 21.0], "app": "10-15", "days": 145, "system": "rice_dsr"}, {"id": "r-co", "country": "哥伦比亚", "name": "哥伦比亚托利马", "station": "埃斯皮纳尔", "crop": "水稻", "season": "A 季", "T": [28.0, 28.4, 28.3, 27.9, 27.9, 28.3, 28.8, 29.1, 28.8, 27.8, 27.2, 27.4], "app": "03-01", "days": 120, "system": "rice_dsr"}, {"id": "r-pe", "country": "秘鲁", "name": "秘鲁北部沿海", "station": "奇克拉约", "crop": "水稻", "season": "灌溉移栽稻", "T": [24.8, 26.0, 25.9, 24.6, 22.7, 21.0, 20.0, 19.8, 20.1, 20.8, 21.8, 23.3], "app": "01-20", "days": 125, "system": "rice_flooded"}, {"id": "r-au", "country": "澳大利亚", "name": "澳大利亚墨累—马兰比吉灌区", "station": "格里菲斯", "crop": "水稻", "season": "旱直播／空播粳稻", "T": [24.6, 24.1, 21.0, 16.4, 12.2, 9.3, 8.4, 10.0, 13.0, 16.6, 20.2, 22.9], "app": "10-20", "days": 160, "system": "rice_dsr"}, {"id": "w-cn-hbn", "country": "中国", "name": "黄淮海北部（冀、鲁北、京津）", "station": "石家庄", "crop": "小麦", "season": "灌溉冬小麦", "T": [-2.1, 1.3, 7.6, 15.1, 21.0, 25.7, 27.1, 25.7, 21.0, 14.5, 6.4, -0.1], "app": "10-08", "days": 245, "system": "wheat_irrigated"}, {"id": "w-cn-hhs", "country": "中国", "name": "黄淮南部（豫、皖北、苏北）", "station": "郑州", "crop": "小麦", "season": "半冬性冬小麦", "T": [0.5, 3.4, 9.0, 15.8, 21.4, 26.2, 27.3, 26.0, 21.6, 16.0, 8.7, 2.4], "app": "10-15", "days": 230, "system": "wheat_irrigated"}, {"id": "w-cn-yz", "country": "中国", "name": "长江中下游稻茬麦（苏中南、皖中、鄂）", "station": "南京", "crop": "小麦", "season": "弱筋/中筋稻茬麦", "T": [2.9, 5.1, 9.6, 15.8, 21.3, 24.9, 28.2, 27.7, 23.5, 17.8, 11.3, 5.0], "app": "11-01", "days": 209, "system": "wheat_irrigated"}, {"id": "w-cn-sc", "country": "中国", "name": "西南冬麦区（川、渝）", "station": "成都", "crop": "小麦", "season": "春性冬播小麦", "T": [5.6, 7.6, 11.6, 16.8, 21.4, 24.1, 25.8, 25.4, 21.8, 17.5, 12.3, 7.3], "app": "10-30", "days": 193, "system": "wheat_irrigated"}, {"id": "w-cn-lp", "country": "中国", "name": "黄土高原旱地（陕、晋南、陇东）", "station": "西安", "crop": "小麦", "season": "旱地冬小麦", "T": [0.3, 3.8, 9.6, 16.0, 21.2, 26.2, 27.8, 26.1, 21.0, 15.2, 8.1, 2.0], "app": "09-28", "days": 251, "system": "wheat_rainfed"}, {"id": "w-cn-xj", "country": "中国", "name": "新疆北疆冬麦区", "station": "昌吉", "crop": "小麦", "season": "滴灌冬小麦", "T": [-12.6, -9.7, -1.7, 9.9, 17.2, 21.9, 23.7, 22.4, 16.7, 7.9, -1.8, -9.4], "app": "09-25", "days": 284, "system": "wheat_irrigated"}, {"id": "w-cn-nx", "country": "中国", "name": "西北春麦区（宁夏、河西走廊）", "station": "银川", "crop": "小麦", "season": "灌溉春小麦", "T": [-7.9, -3.3, 3.9, 11.6, 17.6, 21.9, 23.6, 21.8, 16.6, 9.8, 1.9, -5.5], "app": "03-10", "days": 127, "system": "wheat_irrigated"}, {"id": "w-cn-db", "country": "中国", "name": "东北春麦区（黑龙江、内蒙古东）", "station": "齐齐哈尔", "crop": "小麦", "season": "硬红春小麦", "T": [-18.6, -13.7, -4.2, 6.9, 15.0, 20.8, 23.1, 21.1, 14.5, 5.6, -5.3, -15.1], "app": "04-10", "days": 109, "system": "wheat_irrigated"}, {"id": "w-in-pb", "country": "印度", "name": "印度旁遮普—哈里亚纳", "station": "卢迪亚纳", "crop": "小麦", "season": "Rabi 灌溉小麦", "T": [12.9, 15.6, 20.5, 26.4, 31.2, 32.2, 30.3, 29.7, 28.6, 25.0, 19.2, 14.3], "app": "11-05", "days": 162, "system": "wheat_irrigated"}, {"id": "w-in-up", "country": "印度", "name": "印度恒河平原东部（北方邦东、比哈尔）", "station": "瓦拉纳西", "crop": "小麦", "season": "晚播 Rabi 小麦", "T": [16.1, 19.3, 24.9, 30.3, 32.8, 32.4, 29.6, 29.1, 28.7, 26.4, 21.4, 17.2], "app": "11-25", "days": 132, "system": "wheat_irrigated"}, {"id": "w-in-mp", "country": "印度", "name": "印度中央邦", "station": "印多尔", "crop": "小麦", "season": "硬粒/面包小麦", "T": [17.3, 19.9, 24.7, 29.1, 31.7, 28.7, 25.2, 24.3, 24.7, 24.4, 20.8, 18.1], "app": "11-10", "days": 131, "system": "wheat_irrigated"}, {"id": "w-pk", "country": "巴基斯坦", "name": "巴基斯坦旁遮普", "station": "费萨拉巴德", "crop": "小麦", "season": "灌溉小麦", "T": [12.4, 15.3, 20.4, 26.4, 31.4, 34.5, 32.8, 31.9, 30.6, 25.9, 19.3, 14.0], "app": "11-15", "days": 152, "system": "wheat_irrigated"}, {"id": "w-ir", "country": "伊朗", "name": "伊朗西北部雨养区", "station": "大不里士", "crop": "小麦", "season": "雨养冬小麦", "T": [-2.0, 0.2, 5.6, 11.7, 16.8, 22.2, 26.1, 25.4, 20.8, 14.0, 6.9, 1.2], "app": "10-10", "days": 269, "system": "wheat_rainfed"}, {"id": "w-tr", "country": "土耳其", "name": "土耳其中安纳托利亚", "station": "科尼亚", "crop": "小麦", "season": "雨养冬小麦", "T": [-0.2, 1.4, 5.6, 11.1, 15.8, 20.2, 23.6, 23.3, 18.7, 12.6, 6.1, 1.6], "app": "10-10", "days": 274, "system": "wheat_rainfed"}, {"id": "w-eg", "country": "埃及", "name": "埃及尼罗河三角洲", "station": "卡夫尔谢赫", "crop": "小麦", "season": "灌溉小麦", "T": [13.4, 14.0, 16.1, 19.3, 22.7, 25.6, 27.0, 27.5, 26.0, 23.3, 19.1, 15.1], "app": "11-20", "days": 162, "system": "wheat_irrigated"}, {"id": "w-ma", "country": "摩洛哥", "name": "摩洛哥赛斯—沙维亚平原", "station": "梅克内斯", "crop": "小麦", "season": "雨养硬粒/面包小麦", "T": [10.4, 11.5, 13.6, 15.3, 18.8, 22.8, 26.4, 26.7, 23.2, 19.2, 14.4, 11.1], "app": "11-20", "days": 194, "system": "wheat_rainfed"}, {"id": "w-et", "country": "埃塞俄比亚", "name": "埃塞俄比亚阿尔西—巴莱高原", "station": "阿塞拉", "crop": "小麦", "season": "主雨季小麦（Meher）", "T": [16.0, 17.0, 17.8, 17.8, 18.0, 17.0, 15.8, 15.8, 16.0, 15.7, 15.3, 15.3], "app": "06-25", "days": 152, "system": "wheat_irrigated"}, {"id": "w-fr", "country": "法国", "name": "法国巴黎盆地（博斯）", "station": "沙特尔", "crop": "小麦", "season": "冬小麦（返青前一次施）", "T": [4.3, 4.9, 7.8, 10.2, 13.9, 17.1, 19.4, 19.3, 15.9, 12.1, 7.5, 4.7], "app": "02-20", "days": 152, "system": "wheat_irrigated"}, {"id": "w-uk", "country": "英国", "name": "英格兰东部", "station": "剑桥", "crop": "小麦", "season": "软质冬小麦（返青前一次施）", "T": [4.3, 4.6, 6.9, 9.0, 12.3, 15.3, 17.6, 17.4, 14.9, 11.4, 7.2, 4.6], "app": "02-25", "days": 168, "system": "wheat_irrigated"}, {"id": "w-de", "country": "德国", "name": "德国中部（萨克森—安哈尔特）", "station": "马格德堡", "crop": "小麦", "season": "冬小麦（返青前一次施）", "T": [0.4, 1.1, 4.6, 9.0, 13.9, 16.9, 19.0, 18.6, 14.6, 9.8, 4.9, 1.6], "app": "03-01", "days": 146, "system": "wheat_irrigated"}, {"id": "w-it", "country": "意大利", "name": "意大利南部（普利亚）", "station": "福贾", "crop": "小麦", "season": "雨养硬粒小麦", "T": [7.4, 8.2, 10.7, 14.0, 18.8, 23.3, 26.4, 26.3, 21.9, 17.0, 12.1, 8.4], "app": "11-20", "days": 208, "system": "wheat_rainfed"}, {"id": "w-ua", "country": "乌克兰", "name": "乌克兰中部草原", "station": "波尔塔瓦", "crop": "小麦", "season": "冬小麦", "T": [-5.5, -4.4, 0.5, 9.0, 15.4, 18.9, 20.9, 20.0, 14.5, 8.1, 1.7, -3.0], "app": "09-25", "days": 294, "system": "wheat_irrigated"}, {"id": "w-ru-s", "country": "俄罗斯", "name": "俄罗斯南部（克拉斯诺达尔、斯塔夫罗波尔）", "station": "克拉斯诺达尔", "crop": "小麦", "season": "冬小麦", "T": [-0.5, 0.5, 5.5, 11.9, 17.3, 21.4, 24.0, 23.4, 18.1, 11.8, 5.8, 1.4], "app": "10-01", "days": 278, "system": "wheat_irrigated"}, {"id": "w-kz", "country": "哈萨克斯坦", "name": "哈萨克斯坦北部—西西伯利亚", "station": "科斯塔奈", "crop": "小麦", "season": "旱作春小麦", "T": [-15.4, -14.5, -7.2, 6.2, 13.8, 19.3, 20.8, 18.6, 12.2, 4.3, -5.3, -12.3], "app": "05-15", "days": 104, "system": "wheat_rainfed"}, {"id": "w-us-ks", "country": "美国", "name": "美国南部大平原（堪萨斯、俄克拉何马）", "station": "萨莱纳", "crop": "小麦", "season": "硬红冬小麦（旱作）", "T": [-1.1, 1.8, 7.3, 13.1, 18.9, 24.6, 27.6, 26.6, 21.3, 14.3, 6.9, 0.6], "app": "10-01", "days": 267, "system": "wheat_rainfed"}, {"id": "w-us-nd", "country": "美国", "name": "美国北部大平原（北达科他）", "station": "法戈", "crop": "小麦", "season": "硬红春小麦", "T": [-13.1, -10.2, -2.8, 6.8, 14.0, 19.4, 22.1, 21.1, 15.3, 7.8, -1.6, -10.1], "app": "04-28", "days": 104, "system": "wheat_irrigated"}, {"id": "w-us-pnw", "country": "美国", "name": "美国太平洋西北（华盛顿东、俄勒冈）", "station": "彭德尔顿", "crop": "小麦", "season": "软白冬小麦", "T": [1.1, 3.6, 7.0, 10.2, 14.3, 18.4, 22.8, 22.6, 17.8, 11.3, 4.8, 0.8], "app": "10-05", "days": 294, "system": "wheat_irrigated"}, {"id": "w-ca", "country": "加拿大", "name": "加拿大草原省（萨斯喀彻温）", "station": "萨斯卡通", "crop": "小麦", "season": "硬红春小麦", "T": [-15.5, -12.6, -5.6, 4.4, 11.3, 16.0, 18.8, 17.9, 11.7, 4.4, -5.8, -12.8], "app": "05-05", "days": 111, "system": "wheat_irrigated"}, {"id": "w-mx", "country": "墨西哥", "name": "墨西哥亚基河谷", "station": "奥夫雷贡城", "crop": "小麦", "season": "灌溉硬粒小麦", "T": [17.8, 18.7, 20.6, 23.5, 26.8, 30.7, 31.4, 31.0, 30.5, 27.3, 22.1, 18.3], "app": "12-01", "days": 140, "system": "wheat_irrigated"}, {"id": "w-ar", "country": "阿根廷", "name": "阿根廷潘帕斯", "station": "佩尔加米诺", "crop": "小麦", "season": "小麦（大豆前茬）", "T": [23.5, 22.3, 20.2, 16.2, 12.6, 9.6, 9.1, 10.7, 12.8, 16.2, 19.3, 22.2], "app": "06-10", "days": 178, "system": "wheat_irrigated"}, {"id": "w-br", "country": "巴西", "name": "巴西南部（南里奥格兰德、巴拉那）", "station": "帕苏丰杜", "crop": "小麦", "season": "冬季小麦", "T": [22.4, 22.0, 20.4, 17.2, 14.2, 12.5, 12.3, 13.6, 15.1, 17.3, 19.5, 21.3], "app": "06-15", "days": 147, "system": "wheat_irrigated"}, {"id": "w-au-wa", "country": "澳大利亚", "name": "西澳小麦带", "station": "梅里丁", "crop": "小麦", "season": "雨养小麦", "T": [25.5, 25.1, 22.8, 18.7, 14.7, 12.1, 11.1, 11.6, 13.4, 16.3, 20.0, 23.3], "app": "05-15", "days": 183, "system": "wheat_rainfed"}, {"id": "w-au-nsw", "country": "澳大利亚", "name": "新南威尔士—维多利亚", "station": "沃加沃加", "crop": "小麦", "season": "雨养小麦", "T": [23.8, 23.3, 20.3, 15.5, 11.4, 8.6, 7.6, 9.0, 11.7, 15.1, 18.8, 22.0], "app": "05-10", "days": 204, "system": "wheat_rainfed"}];
+const $=s=>document.querySelector(s);
+const RG=8.314, MD=[0,31,59,90,120,151,181,212,243,273,304,334];
+
+/* ---------- 模型（与 common/field_release.py 一致） ---------- */
+function dailyTemps(T12,start,n){
+  const mid=T12.map((_,m)=>15.2+30.44*m), xs=[...mid.map(x=>x-365),...mid,...mid.map(x=>x+365)], ys=[...T12,...T12,...T12];
+  const out=new Array(n);
+  for(let i=0;i<n;i++){const d=(start+i)%365; let j=0; while(xs[j+1]<d) j++; out[i]=ys[j]+(ys[j+1]-ys[j])*(d-xs[j])/(xs[j+1]-xs[j]);}
+  return out;
+}
+const arr=(T,Ea)=>Math.exp(Ea*1000/RG*(1/298.15-1/(T+273.15)));
+const ramp=T=>Math.min(1,Math.max(0,T/3));
+function tempFactor(Tm,amp,Ea){let s=0;for(let h=0;h<24;h++){const T=Tm+amp*Math.sin(2*Math.PI*(h+.5)/24);s+=arr(T,Ea)*ramp(T);}return s/24;}
+function psiAt(reg,d){const m=M.MOISTURE[reg]; if(m.flood) return 0; const ph=(1-Math.cos(2*Math.PI*d/m.period))/2; return -Math.exp(Math.log(-m.wet)+(Math.log(-m.dry)-Math.log(-m.wet))*ph);}
+function mFactor(psi,s){const x=Math.min(1,Math.max(0,(Math.log10(Math.max(-psi,1e-9))-Math.log10(33))/(Math.log10(1500)-Math.log10(33))));return 1-s*x;}
+function offsetAt(sp,d){ if("base" in sp) return sp.base; if(d<sp.until) return sp.early; if(sp.ramp<=0) return sp.late; return sp.early+(sp.late-sp.early)*Math.min(1,(d-sp.until)/sp.ramp); }
+const lam=(D,f0,b)=>D/Math.pow(Math.log((1-f0)/0.2),1/b);
+const rel=(tau,D,f0,b)=>f0+(1-f0)*(1-Math.exp(-Math.pow(Math.max(tau,0)/lam(D,f0,b),b)));
+function simulate(o){
+  const S=M.SYSTEMS[o.system], P=M.PLACEMENT[o.placement], n=o.days+1;
+  const Tair=dailyTemps(o.T12,o.start,n), amp=P.amp!=null?P.amp:S.amp;
+  const pf=o.placement==="surface"?o.surf:P.factor, sf=M.TEXTURE[o.texture].factor;
+  const f0e=o.f0+(1-o.f0)*o.dmg;
+  let tau=0; const r={Tair,Ts:[],aW:[],rate:[],F:[],Fw:[]};
+  for(let d=0;d<n;d++){
+    const off=offsetAt(S.offset,d)+P.dT, Ts=Tair[d]>=0?Tair[d]+off:Tair[d]*0.4+0.5;
+    let reg=S.moisture; if(S.switch && d>=S.switch[0]) reg=S.switch[1];
+    const dd=S.switch && d>=S.switch[0]? d-S.switch[0] : d;
+    const aW=mFactor(psiAt(reg,dd),o.s);
+    const rate=tempFactor(Ts,amp,o.Ea)*aW*pf*sf*M.DEFAULTS.f_soil;
+    tau+=rate;
+    r.Ts.push(Ts); r.aW.push(aW); r.rate.push(rate); r.F.push(rel(tau,o.D,f0e,o.beta)); r.Fw.push(rel(d,o.D,o.f0,o.beta));
+  }
+  const at=p=>{const i=r.F.findIndex(v=>v>=p);return i<0?null:i;};
+  r.d50=at(.5); r.d80=at(.8); r.end=r.F[n-1]; r.mean=r.rate.reduce((a,b)=>a+b,0)/n;
+  return r;
+}
+
+/* ---------- 控件 ---------- */
+const st={site:"r-cn-myz", system:null, placement:"incorporated", texture:"loam", D:90, beta:M.DEFAULTS.beta,
+  f0:M.DEFAULTS.f0, Ea:M.DEFAULTS.Ea, s:M.DEFAULTS.moisture_sens, dmg:M.DEFAULTS.damage, surf:M.PLACEMENT.surface.factor, app:null, days:null};
+const byCountry=d3.group(SITES,s=>s.country);
+$("#site").innerHTML=[...byCountry].map(([c,list])=>`<optgroup label="${c}">${list.map(s=>`<option value="${s.id}">${s.name} · ${s.crop}（${s.station}）</option>`).join("")}</optgroup>`).join("");
+$("#sys").innerHTML=Object.entries(M.SYSTEMS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join("");
+$("#place").innerHTML=Object.entries(M.PLACEMENT).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join("");
+$("#tex").innerHTML=Object.entries(M.TEXTURE).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join("");
+const doyOf=mmdd=>{const [m,d]=mmdd.split("-").map(Number);return MD[m-1]+d-1;};
+const fmt=doy=>{doy=((doy%365)+365)%365;let m=11;while(MD[m]>doy)m--;return `${m+1}月${doy-MD[m]+1}日`;};
+function loadSite(id){
+  const s=SITES.find(x=>x.id===id); st.site=id; st.app=s.app; st.days=Math.min(360,Math.max(60,Math.round(s.days/5)*5+20)); st.system=s.system;
+  $("#site").value=id; $("#sys").value=s.system; $("#app").value=`2026-${s.app}`; $("#days").value=st.days;
+}
+function bind(id,key,scale=1){const el=$("#"+id); el.value=st[key]*scale; el.addEventListener("input",()=>{st[key]=+el.value/scale;update();});}
+bind("D","D"); bind("beta","beta"); bind("f0","f0",100); bind("Ea","Ea"); bind("s","s"); bind("dmg","dmg",100); bind("surf","surf");
+$("#site").addEventListener("change",e=>{loadSite(e.target.value);update();});
+$("#sys").addEventListener("change",e=>{st.system=e.target.value;update();});
+$("#place").addEventListener("change",e=>{st.placement=e.target.value;update();});
+$("#tex").addEventListener("change",e=>{st.texture=e.target.value;update();});
+$("#app").addEventListener("input",e=>{const v=e.target.value; if(v){st.app=v.slice(5);update();}});
+$("#days").addEventListener("input",e=>{st.days=+e.target.value;update();});
+$("#place").value=st.placement; $("#tex").value=st.texture;
+loadSite(st.site);
+
+/* ---------- 绘图 ---------- */
+function frame(svgSel,h,m){const w=Math.max(300,svgSel.node().parentNode.clientWidth);svgSel.attr("viewBox",`0 0 ${w} ${h}`);svgSel.selectAll("*").remove();return {w,h,m};}
+function axes(svg,x,y,{w,h,m},yfmt){
+  svg.append("g").attr("class","gridl").attr("transform",`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickSize(-(w-m.l-m.r)).tickFormat(""));
+  svg.append("g").attr("class","axis").attr("transform",`translate(0,${h-m.b})`).call(d3.axisBottom(x).ticks(Math.min(10,w/70)).tickFormat(d=>d+"d"));
+  svg.append("g").attr("class","axis").attr("transform",`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickFormat(yfmt||(d=>d)));
+}
+let cur=null, xMain=null;
+function drawMain(r){
+  const svg=d3.select("#main"), f=frame(svg,300,{l:44,r:14,t:12,b:28}), {w,h,m}=f, n=r.F.length;
+  const x=d3.scaleLinear([0,n-1],[m.l,w-m.r]), y=d3.scaleLinear([0,100],[h-m.b,m.t]); xMain=x;
+  axes(svg,x,y,f,d=>d+"%");
+  svg.append("line").attr("x1",m.l).attr("x2",w-m.r).attr("y1",y(80)).attr("y2",y(80)).attr("stroke","var(--muted)").attr("stroke-dasharray","3 3");
+  const L=a=>d3.line().x((_,i)=>x(i)).y(v=>y(100*v))(a);
+  svg.append("path").attr("d",L(r.Fw)).attr("fill","none").attr("stroke","var(--water)").attr("stroke-width",2).attr("stroke-dasharray","6 4");
+  svg.append("path").attr("d",L(r.F)).attr("fill","none").attr("stroke","var(--field)").attr("stroke-width",2.4);
+  const mark=(d,col,lab,dy)=>{ if(d==null) return; svg.append("circle").attr("cx",x(d)).attr("cy",y(80)).attr("r",4.5).attr("fill",col).attr("stroke","var(--surface)").attr("stroke-width",1.5);
+    svg.append("text").attr("x",x(d)+6).attr("y",y(80)+dy).attr("font-size",11).attr("fill","var(--ink)").text(lab); };
+  const dw=r.Fw.findIndex(v=>v>=.8-1e-9);
+  mark(dw<0?null:dw,"var(--water)",`静水第 ${dw} 天`,r.d80!=null&&r.d80<dw?14:-8);
+  mark(r.d80,"var(--field)",`田间第 ${r.d80} 天`,r.d80!=null&&r.d80<dw?-8:14);
+  const hov=svg.append("line").attr("y1",m.t).attr("y2",h-m.b).attr("stroke","var(--muted)").attr("opacity",0);
+  svg.append("rect").attr("x",m.l).attr("y",m.t).attr("width",w-m.l-m.r).attr("height",h-m.t-m.b).attr("fill","transparent")
+    .on("mousemove",e=>{const [px]=d3.pointer(e); const i=Math.max(0,Math.min(n-1,Math.round(x.invert(px)))); hov.attr("x1",x(i)).attr("x2",x(i)).attr("opacity",.6);
+      const tip=$("#tip"); tip.hidden=false; tip.innerHTML=`<b>第 ${i} 天</b>（${fmt(doyOf(st.app)+i)}）<br>田间 <b class="num">${(100*r.F[i]).toFixed(0)}%</b> · 静水 ${(100*r.Fw[i]).toFixed(0)}%<br><span class="muted">包膜处 ${r.Ts[i].toFixed(1)} °C，速率 ×${r.rate[i].toFixed(2)}</span>`;
+      const box=$("#mainBox").getBoundingClientRect(), sb=svg.node().getBoundingClientRect(); const sx=sb.width/w; let left=x(i)*sx+12; if(left+tip.offsetWidth>box.width) left=x(i)*sx-tip.offsetWidth-12; tip.style.left=left+"px"; tip.style.top=(sb.top-box.top+20)+"px";})
+    .on("mouseleave",()=>{hov.attr("opacity",0);$("#tip").hidden=true;});
+}
+function drawTemp(r){
+  const svg=d3.select("#temp"), f=frame(svg,200,{l:36,r:10,t:10,b:28}), {w,h,m}=f, n=r.Ts.length;
+  const lo=Math.floor(Math.min(d3.min(r.Ts),d3.min(r.Tair))-2), hi=Math.ceil(Math.max(d3.max(r.Ts),d3.max(r.Tair))+2);
+  const x=d3.scaleLinear([0,n-1],[m.l,w-m.r]), y=d3.scaleLinear([lo,hi],[h-m.b,m.t]).nice();
+  axes(svg,x,y,f,d=>d+"°");
+  if(lo<0) svg.append("line").attr("x1",m.l).attr("x2",w-m.r).attr("y1",y(0)).attr("y2",y(0)).attr("stroke","var(--moist)").attr("stroke-dasharray","2 3");
+  const L=a=>d3.line().x((_,i)=>x(i)).y(v=>y(v))(a);
+  svg.append("path").attr("d",L(r.Tair)).attr("fill","none").attr("stroke","var(--air)").attr("stroke-width",1.5);
+  svg.append("path").attr("d",L(r.Ts)).attr("fill","none").attr("stroke","var(--soil)").attr("stroke-width",2.2);
+}
+function drawRate(r){
+  const svg=d3.select("#rate"), f=frame(svg,200,{l:36,r:10,t:10,b:28}), {w,h,m}=f, n=r.rate.length;
+  const x=d3.scaleLinear([0,n-1],[m.l,w-m.r]), y=d3.scaleLinear([0,Math.max(1.2,d3.max(r.rate)*1.1)],[h-m.b,m.t]).nice();
+  axes(svg,x,y,f,d=>"×"+d);
+  svg.append("line").attr("x1",m.l).attr("x2",w-m.r).attr("y1",y(1)).attr("y2",y(1)).attr("stroke","var(--muted)").attr("stroke-dasharray","3 3");
+  const L=a=>d3.line().x((_,i)=>x(i)).y(v=>y(v))(a);
+  svg.append("path").attr("d",L(r.aW)).attr("fill","none").attr("stroke","var(--moist)").attr("stroke-width",1.6).attr("stroke-dasharray","5 4");
+  svg.append("path").attr("d",L(r.rate)).attr("fill","none").attr("stroke","var(--mult)").attr("stroke-width",2.2);
+}
+function tiles(r){
+  const D=st.D, d80=r.d80, diff=d80==null?null:d80-D;
+  const cell=(big,lab,extra="")=>`<div class="tile"><b>${big}</b><span>${lab}</span>${extra}</div>`;
+  $("#tiles").innerHTML=
+    cell(d80==null?`&gt;${st.days}`:d80,"田间达到 80% 的天数",diff==null?`<span class="delta muted">模拟期内未达到</span>`:`<span class="delta ${diff>0?"up":"down"}">比静水${diff>0?"慢 "+diff:"快 "+(-diff)} 天</span>`)+
+    cell(r.d50==null?`&gt;${st.days}`:r.d50,"田间达到 50% 的天数")+
+    cell(`${(100*r.end).toFixed(0)}%`,`第 ${st.days} 天累计释放`)+
+    cell(`×${r.mean.toFixed(2)}`,"平均速率（相对 25 °C 静水）");
+}
+function sysTable(){
+  const rows=Object.entries(M.SYSTEMS).map(([k,v])=>{const r=simulate({...opts(),system:k});return {k,v,r};});
+  const maxRate=d3.max(rows,o=>o.r.mean);
+  $("#sysTbl tbody").innerHTML=rows.map(({k,v,r})=>`<tr tabindex="0" data-k="${k}" class="${k===st.system?"cur":""}"><td>${v.label}</td><td class="n">${r.d50??"—"}</td><td class="n">${r.d80??"—"}</td><td><span class="bar" style="width:${Math.round(90*r.mean/maxRate)}px"></span> <span class="num">×${r.mean.toFixed(2)}</span></td><td class="n">${(100*r.end).toFixed(0)}%</td></tr>`).join("");
+  $("#sysTbl tbody").querySelectorAll("tr").forEach(tr=>{const go=()=>{st.system=tr.dataset.k;$("#sys").value=st.system;update();};tr.onclick=go;tr.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go();}};});
+}
+function opts(){const s=SITES.find(x=>x.id===st.site);return {T12:s.T,start:doyOf(st.app),days:st.days,D:st.D,beta:st.beta,f0:st.f0,Ea:st.Ea,s:st.s,dmg:st.dmg,surf:st.surf,system:st.system,placement:st.placement,texture:st.texture};}
+function labels(){
+  $("#DV").textContent=st.D+" 天"; $("#betaV").textContent=st.beta.toFixed(1)+(st.beta<1.8?"（线性型）":"（S 型）");
+  $("#f0V").textContent=(100*st.f0).toFixed(1)+"%"; $("#EaV").textContent=st.Ea+" kJ/mol"; $("#sV").textContent=st.s.toFixed(2);
+  $("#dmgV").textContent=(100*st.dmg).toFixed(1)+"%"; $("#surfV").textContent="×"+st.surf.toFixed(1);
+  $("#appV").textContent=fmt(doyOf(st.app)); $("#daysV").textContent=st.days+" 天";
+  $("#surfL").hidden=st.placement!=="surface";
+}
+function update(){ labels(); cur=simulate(opts()); tiles(cur); drawMain(cur); drawTemp(cur); drawRate(cur); sysTable(); }
+update();
+let rt; addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(update,150);});
+</script>

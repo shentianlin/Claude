@@ -1,0 +1,352 @@
+<title>田间释放模拟器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;900&display=swap">
+<style>
+/* 布局：左侧参数栏 + 右侧结果（数字条、主曲线、两张小图、各系统对比表），下方为影响因素与依据 */
+:root{
+  --bg:#F2F5F3; --surface:#FBFCFB; --ink:#18221E; --muted:#56655E; --line:#D4DDD8; --chip:#E5ECE8;
+  --field:#1F6F78; --water:#8A9690; --soil:#A0522D; --air:#B9A48E; --mult:#1F6F78; --moist:#6C8EBF;
+  --good:#2F7D4F; --warn:#A96A12; --bad:#B5483B; --focus:#1F6F78;
+  --serif:"Noto Serif SC","Songti SC","STSong",serif;
+  --sans:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#111715; --surface:#18201D; --ink:#E3EBE7; --muted:#97A69F; --line:#2B3632; --chip:#222C28;
+    --field:#4FB3BD; --water:#7E8B85; --soil:#E08A5E; --air:#8E7C68; --mult:#4FB3BD; --moist:#8FB0E0;
+    --good:#5FBF83; --warn:#E0A043; --bad:#E07A6B; --focus:#4FB3BD;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#111715; --surface:#18201D; --ink:#E3EBE7; --muted:#97A69F; --line:#2B3632; --chip:#222C28;
+  --field:#4FB3BD; --water:#7E8B85; --soil:#E08A5E; --air:#8E7C68; --mult:#4FB3BD; --moist:#8FB0E0;
+  --good:#5FBF83; --warn:#E0A043; --bad:#E07A6B; --focus:#4FB3BD;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6;padding-inline:16px;padding-block:0 48px}
+.wrap{max-width:1240px;margin:0 auto}
+h1,h2,h3{font-family:var(--serif);text-wrap:balance;margin:0;line-height:1.25}
+h1{font-size:clamp(26px,3.8vw,40px);font-weight:900}
+h2{font-size:22px;font-weight:900}
+h3{font-size:16px;font-weight:600}
+p{margin:0}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.note{font-size:13px;color:var(--muted)}
+.eyebrow{font-size:12px;letter-spacing:.12em;color:var(--muted)}
+header{padding-block:28px 18px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+header .lede{max-width:70ch;color:var(--muted)}
+.app{display:grid;grid-template-columns:minmax(260px,320px) 1fr;gap:28px;padding-block:22px}
+.ctrl{display:flex;flex-direction:column;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px;align-self:start}
+.ctrl fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.ctrl legend{font-family:var(--serif);font-weight:600;font-size:15px;margin-bottom:4px;padding:0}
+.ctrl label{display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--muted)}
+.ctrl label .row{display:flex;justify-content:space-between;gap:8px}
+.ctrl label b{color:var(--ink);font-family:var(--mono);font-weight:500}
+select,input[type=range],input[type=date]{font:inherit;font-size:14px;width:100%;color:var(--ink)}
+select,input[type=date]{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 8px}
+input[type=range]{accent-color:var(--field)}
+select:focus-visible,input:focus-visible,button:focus-visible,tr:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.out{display:flex;flex-direction:column;gap:20px;min-width:0}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.tile{padding:12px 14px 12px 0;display:flex;flex-direction:column;gap:2px;min-width:0}
+.tile + .tile{padding-left:14px;border-left:1px solid var(--line)}
+.tile b{font-family:var(--mono);font-size:26px;font-weight:500;line-height:1.15}
+.tile span{font-size:12px;color:var(--muted)}
+.tile .delta{font-size:12px;font-family:var(--mono)}
+.up{color:var(--bad)} .down{color:var(--good)}
+.chart{position:relative;min-width:0}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:4px}
+.legend i{display:inline-block;width:16px;height:0;border-top:2px solid;margin-right:5px;vertical-align:3px}
+.axis text{fill:var(--muted);font-family:var(--mono);font-size:11px}
+.axis path,.axis line{stroke:var(--line)}
+.gridl line{stroke:var(--line);stroke-dasharray:2 3}
+.gridl path{display:none}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.15);white-space:nowrap}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--muted);font-weight:500;font-size:12px}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+#sysTbl tbody tr{cursor:pointer}
+#sysTbl tbody tr:hover{background:var(--chip)}
+#sysTbl tbody tr.cur{background:var(--chip);font-weight:700}
+.bar{display:inline-block;height:8px;background:var(--field);border-radius:2px;vertical-align:middle}
+section{padding-block:18px 6px}
+.factors td:first-child{white-space:nowrap;font-weight:500}
+.refs li{font-size:13px;margin-bottom:4px}
+a{color:var(--field)}
+.formula{font-family:var(--mono);font-size:13px;background:var(--chip);padding:10px 12px;border-radius:6px;overflow-x:auto;white-space:pre}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.cols p,.cols li{max-width:68ch}
+@media (max-width:900px){
+  .app,.pair,.cols{grid-template-columns:1fr}
+  .tiles{grid-template-columns:1fr 1fr}
+  .tile:nth-child(3){padding-left:0;border-left:0}
+  .tile:nth-child(n+3){border-top:1px solid var(--line)}
+}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">包膜尿素 · 从 25 °C 静水到田间</div>
+  <h1>田间释放模拟器</h1>
+  <p class="lede">同一个包膜尿素，放进淹水稻田、越冬麦田或覆膜玉米地，释放快慢可以差好几周。选好地点、种植系统和施肥方式，看产品在田间什么时候放到 50% 和 80%，以及是哪些因素在起作用。</p>
+</header>
+
+<div class="app">
+  <form class="ctrl" id="ctrl" onsubmit="return false">
+    <fieldset>
+      <legend>地点与农时</legend>
+      <label for="site">代表站（来自稻、麦两张配方地图）<select id="site"></select></label>
+      <label for="app"><span class="row">施肥日<b id="appV"></b></span><input id="app" type="date"></label>
+      <label for="days"><span class="row">模拟天数<b id="daysV"></b></span><input id="days" type="range" min="30" max="360" step="5"></label>
+    </fieldset>
+    <fieldset>
+      <legend>田间条件</legend>
+      <label for="sys">种植系统<select id="sys"></select></label>
+      <label for="place">施肥方式<select id="place"></select></label>
+      <label for="surf" id="surfL"><span class="row">表施加速系数<b id="surfV"></b></span><input id="surf" type="range" min="1.5" max="5" step="0.1"></label>
+      <label for="tex">土壤质地<select id="tex"></select></label>
+    </fieldset>
+    <fieldset>
+      <legend>产品（25 °C 静水实测参数）</legend>
+      <label for="D"><span class="row">控释期 D（静水 80%）<b id="DV"></b></span><input id="D" type="range" min="30" max="360" step="10"></label>
+      <label for="beta"><span class="row">形状参数 β<b id="betaV"></b></span><input id="beta" type="range" min="0.8" max="4" step="0.1"></label>
+      <label for="f0"><span class="row">初期溶出 f₀<b id="f0V"></b></span><input id="f0" type="range" min="0" max="15" step="0.5"></label>
+      <label for="Ea"><span class="row">表观活化能 Ea<b id="EaV"></b></span><input id="Ea" type="range" min="30" max="80" step="1"></label>
+      <label for="s"><span class="row">水分敏感度 s<b id="sV"></b></span><input id="s" type="range" min="0" max="0.8" step="0.05"></label>
+      <label for="dmg"><span class="row">包膜破损率<b id="dmgV"></b></span><input id="dmg" type="range" min="0" max="15" step="0.5"></label>
+      <p class="note">D、β、f₀、Ea 可用仓库里的 tools/fit_release.py 从实测曲线拟合得到。</p>
+    </fieldset>
+  </form>
+
+  <div class="out">
+    <div class="tiles" id="tiles"></div>
+    <div class="chart" id="mainBox">
+      <h3>累计释放：田间 vs 25 °C 静水</h3>
+      <svg id="main"></svg>
+      <div class="legend"><span><i style="border-color:var(--field)"></i>田间预测</span><span><i style="border-color:var(--water);border-top-style:dashed"></i>25 °C 静水（标称）</span></div>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <div class="pair">
+      <div class="chart">
+        <h3>包膜处温度（°C）</h3>
+        <svg id="temp"></svg>
+        <div class="legend"><span><i style="border-color:var(--soil)"></i>包膜处日均温</span><span><i style="border-color:var(--air)"></i>气温</span></div>
+      </div>
+      <div class="chart">
+        <h3>日释放速率（相对 25 °C 静水的倍数）</h3>
+        <svg id="rate"></svg>
+        <div class="legend"><span><i style="border-color:var(--mult)"></i>综合速率倍数</span><span><i style="border-color:var(--moist);border-top-style:dashed"></i>其中水分因子</span></div>
+      </div>
+    </div>
+    <div>
+      <h3>同一产品、同一地点，换种植系统</h3>
+      <p class="note" style="margin:2px 0 8px">点击一行即切换到该系统。施肥方式、质地等其他条件保持当前设置。</p>
+      <div class="scroll"><table id="sysTbl"><thead><tr><th>种植系统</th><th class="n">达 50%</th><th class="n">达 80%</th><th>相对静水快慢</th><th class="n">模拟期末</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<section>
+  <h2 style="margin-bottom:10px">影响田间释放的因素</h2>
+  <div class="scroll">
+  <table class="factors">
+    <thead><tr><th>因素</th><th>怎么起作用</th><th>模型中的处理</th><th>影响大小</th><th>依据</th></tr></thead>
+    <tbody>
+      <tr><td>温度</td><td>水分渗入、尿素溶出与扩散都随温度加快</td><td>按包膜处温度的 Arrhenius 关系，并对昼夜波动积分</td><td>最大：每升高 10 °C 约快 1 倍</td><td>Golden 2011；El-Hout 2021；Pang 2026</td></tr>
+      <tr><td>昼夜温差</td><td>速率随温度呈凸函数，波动越大，日平均速率越高</td><td>按 24 小时正弦温度积分</td><td>日均 20 °C 时，半幅 10 °C 约快 11%</td><td>Ransom 2020（恒温与变温差异明显）</td></tr>
+      <tr><td>冻结</td><td>水分冻结后无法扩散进颗粒，释放停止；颗粒不会冻裂</td><td>土温 0–3 °C 线性降到 0</td><td>越冬作物很大</td><td>ESN 产品资料</td></tr>
+      <tr><td>土壤水分</td><td>颗粒吸水变慢，滞后期延长；适宜生长的湿度范围内几乎无影响</td><td>按基质势：−33 kPa 以上为 1，到 −1500 kPa 降到 1 − s</td><td>干旱时推迟可达约 30 天，与膜材有关</td><td>Verburg 2020；Sentek 2023；Ransom 2020</td></tr>
+      <tr><td>施肥位置</td><td>表施时日晒高温、干湿交替，包膜老化快；条施颗粒集中，扩散受限</td><td>表施 ×2.5（可调）并按地表温度；条施 ×0.85</td><td>表施可快 3 倍以上</td><td>Ransom 2020；Janke 2022</td></tr>
+      <tr><td>种植方式造成的土温差</td><td>淹水层保温、地膜增温、秸秆覆盖和冠层遮阴降温</td><td>各种植系统设定土温偏移</td><td>地膜前 60–90 天增温 2–4 °C</td><td>Liu 2023；Wang 2015；Bo 2020</td></tr>
+      <tr><td>土壤质地</td><td>黏土含水量高、与颗粒接触面大，吸水快</td><td>黏土 ×1.15、砂土 ×0.95</td><td>小，且各研究不一致</td><td>Golden 2011；Janke 2022；Sentek 2023</td></tr>
+      <tr><td>包膜破损</td><td>运输、掺混磨损的颗粒施下即溶</td><td>破损比例计入初期溶出</td><td>每 1% 破损约多 1% 速效氮</td><td>ESN 使用说明（掺混宜最后加入、时间宜短）</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="cols">
+  <div>
+    <h3>模型</h3>
+    <div class="formula" style="margin:8px 0">dτ/dt = a_T · a_W · a_P · a_S · f_soil       （每天累计的 25 °C 等效天数）
+a_T = 一天 24 小时 Arrhenius(T) × 冻结因子 的平均
+F(τ) = f₀' + (1 − f₀')·[1 − exp(−(τ/λ)^β)]，F(D) = 80%
+f₀'  = f₀ + (1 − f₀)·破损率</div>
+    <p>“不同作物不一样”，本质上是不同作物的栽培方式带来的温度、水分和施肥位置不同。水稻淹水，冬小麦越冬冻土，玉米常覆膜，免耕地表有秸秆。所以模型按种植系统给出预设，同一作物的不同栽培方式会落在不同预设上。</p>
+    <p style="margin-top:8px">土壤中相对静水的基础系数取 0.9，与稻、麦两张配方地图一致。气温由各代表站的月均温插值得到。</p>
+  </div>
+  <div>
+    <h3>局限</h3>
+    <ul>
+      <li>水分状态是典型情景，不是逐日降雨模拟。正式应用应接入逐日气象和土壤水分数据。</li>
+      <li>表施系数、质地系数只有少数研究支撑，不确定性大；表施在 Ransom 2020 中观察到 35 天内放完，比默认设置还快。</li>
+      <li>假设温度只改变快慢、不改变曲线形状。S 型产品的滞后期是否也满足这一点，需要低温实测。</li>
+      <li>没有考虑包膜生物降解、土壤 pH、离子强度等次要因素。</li>
+    </ul>
+    <h3 style="margin-top:14px">文献</h3>
+    <ol class="refs">
+      <li>Ransom et al. 2020. <a href="https://consensus.app/papers/details/bf1fcd9b709952e09000b97aeb0ca038/" target="_blank" rel="noopener">N release rates from slow- and controlled-release fertilizers influenced by placement and temperature</a>. PLoS ONE.</li>
+      <li>Verburg et al. 2020. <a href="https://consensus.app/papers/details/b9624a9bd8195a5f89f770272ef79a24/" target="_blank" rel="noopener">Understanding soil water effects on nitrogen release from controlled-release fertilizers</a>. SSSAJ.</li>
+      <li>Sentek et al. 2023. <a href="https://consensus.app/papers/details/c87c14d09c3a5471a9231539918c1a34/" target="_blank" rel="noopener">Nitrogen release from different polymer-coated urea fertilizers in soil is affected by soil properties</a>. Soil Use Manage.</li>
+      <li>Golden et al. 2011. <a href="https://consensus.app/papers/details/cddf95c0b8725328951b47218ece96c2/" target="_blank" rel="noopener">N release from ESN as influenced by soil series, temperature, moisture, and incubation method</a>. Commun Soil Sci Plant Anal.</li>
+      <li>Janke et al. 2022. <a href="https://consensus.app/papers/details/332061d95d93549ab0c4d52f6445fdff/" target="_blank" rel="noopener">The impact of banding polymer-coated urea on N availability and distribution in contrasting soils</a>. J Soil Sci Plant Nutr.</li>
+      <li>El-Hout et al. 2021. <a href="https://consensus.app/papers/details/1be5b8dc9e7050dab915d6e2b0211d83/" target="_blank" rel="noopener">N release from polymer-coated urea: effect of seasons and growing degree-days</a>. Crops and Soils.</li>
+      <li>Liu et al. 2023. <a href="https://consensus.app/papers/details/a31449dee3b659cbbd154452a91b7ee0/" target="_blank" rel="noopener">N fertilizer scheme for spring maize in full-film double-ridge furrow</a>. Agric Water Manage.</li>
+      <li>Bo et al. 2020. <a href="https://consensus.app/papers/details/23f4f0577d48581788f92ec77da84f80/" target="_blank" rel="noopener">Plastic-film mulching patterns for maize in sub-humid northeast China</a>. Irrigation Sci.</li>
+      <li>Pang et al. 2026. <a href="https://consensus.app/papers/details/ec81161c1fb25b129997ae96b5dc1fd9/" target="_blank" rel="noopener">Controlled release mechanism of starch-based polyurethane coated urea</a>. Environ Technol Innov.</li>
+      <li><a href="https://smartnitrogen.com/smart-talk/busting-the-myths-around-esn-polymer-coating-edition/" target="_blank" rel="noopener">ESN polymer coating: handling, blending and freezing</a>. Nutrien.</li>
+    </ol>
+  </div>
+</section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+const M=/*__MODEL__*/null, SITES=/*__SITES__*/null;
+const $=s=>document.querySelector(s);
+const RG=8.314, MD=[0,31,59,90,120,151,181,212,243,273,304,334];
+
+/* ---------- 模型（与 common/field_release.py 一致） ---------- */
+function dailyTemps(T12,start,n){
+  const mid=T12.map((_,m)=>15.2+30.44*m), xs=[...mid.map(x=>x-365),...mid,...mid.map(x=>x+365)], ys=[...T12,...T12,...T12];
+  const out=new Array(n);
+  for(let i=0;i<n;i++){const d=(start+i)%365; let j=0; while(xs[j+1]<d) j++; out[i]=ys[j]+(ys[j+1]-ys[j])*(d-xs[j])/(xs[j+1]-xs[j]);}
+  return out;
+}
+const arr=(T,Ea)=>Math.exp(Ea*1000/RG*(1/298.15-1/(T+273.15)));
+const ramp=T=>Math.min(1,Math.max(0,T/3));
+function tempFactor(Tm,amp,Ea){let s=0;for(let h=0;h<24;h++){const T=Tm+amp*Math.sin(2*Math.PI*(h+.5)/24);s+=arr(T,Ea)*ramp(T);}return s/24;}
+function psiAt(reg,d){const m=M.MOISTURE[reg]; if(m.flood) return 0; const ph=(1-Math.cos(2*Math.PI*d/m.period))/2; return -Math.exp(Math.log(-m.wet)+(Math.log(-m.dry)-Math.log(-m.wet))*ph);}
+function mFactor(psi,s){const x=Math.min(1,Math.max(0,(Math.log10(Math.max(-psi,1e-9))-Math.log10(33))/(Math.log10(1500)-Math.log10(33))));return 1-s*x;}
+function offsetAt(sp,d){ if("base" in sp) return sp.base; if(d<sp.until) return sp.early; if(sp.ramp<=0) return sp.late; return sp.early+(sp.late-sp.early)*Math.min(1,(d-sp.until)/sp.ramp); }
+const lam=(D,f0,b)=>D/Math.pow(Math.log((1-f0)/0.2),1/b);
+const rel=(tau,D,f0,b)=>f0+(1-f0)*(1-Math.exp(-Math.pow(Math.max(tau,0)/lam(D,f0,b),b)));
+function simulate(o){
+  const S=M.SYSTEMS[o.system], P=M.PLACEMENT[o.placement], n=o.days+1;
+  const Tair=dailyTemps(o.T12,o.start,n), amp=P.amp!=null?P.amp:S.amp;
+  const pf=o.placement==="surface"?o.surf:P.factor, sf=M.TEXTURE[o.texture].factor;
+  const f0e=o.f0+(1-o.f0)*o.dmg;
+  let tau=0; const r={Tair,Ts:[],aW:[],rate:[],F:[],Fw:[]};
+  for(let d=0;d<n;d++){
+    const off=offsetAt(S.offset,d)+P.dT, Ts=Tair[d]>=0?Tair[d]+off:Tair[d]*0.4+0.5;
+    let reg=S.moisture; if(S.switch && d>=S.switch[0]) reg=S.switch[1];
+    const dd=S.switch && d>=S.switch[0]? d-S.switch[0] : d;
+    const aW=mFactor(psiAt(reg,dd),o.s);
+    const rate=tempFactor(Ts,amp,o.Ea)*aW*pf*sf*M.DEFAULTS.f_soil;
+    tau+=rate;
+    r.Ts.push(Ts); r.aW.push(aW); r.rate.push(rate); r.F.push(rel(tau,o.D,f0e,o.beta)); r.Fw.push(rel(d,o.D,o.f0,o.beta));
+  }
+  const at=p=>{const i=r.F.findIndex(v=>v>=p);return i<0?null:i;};
+  r.d50=at(.5); r.d80=at(.8); r.end=r.F[n-1]; r.mean=r.rate.reduce((a,b)=>a+b,0)/n;
+  return r;
+}
+
+/* ---------- 控件 ---------- */
+const st={site:"r-cn-myz", system:null, placement:"incorporated", texture:"loam", D:90, beta:M.DEFAULTS.beta,
+  f0:M.DEFAULTS.f0, Ea:M.DEFAULTS.Ea, s:M.DEFAULTS.moisture_sens, dmg:M.DEFAULTS.damage, surf:M.PLACEMENT.surface.factor, app:null, days:null};
+const byCountry=d3.group(SITES,s=>s.country);
+$("#site").innerHTML=[...byCountry].map(([c,list])=>`<optgroup label="${c}">${list.map(s=>`<option value="${s.id}">${s.name} · ${s.crop}（${s.station}）</option>`).join("")}</optgroup>`).join("");
+$("#sys").innerHTML=Object.entries(M.SYSTEMS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join("");
+$("#place").innerHTML=Object.entries(M.PLACEMENT).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join("");
+$("#tex").innerHTML=Object.entries(M.TEXTURE).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join("");
+const doyOf=mmdd=>{const [m,d]=mmdd.split("-").map(Number);return MD[m-1]+d-1;};
+const fmt=doy=>{doy=((doy%365)+365)%365;let m=11;while(MD[m]>doy)m--;return `${m+1}月${doy-MD[m]+1}日`;};
+function loadSite(id){
+  const s=SITES.find(x=>x.id===id); st.site=id; st.app=s.app; st.days=Math.min(360,Math.max(60,Math.round(s.days/5)*5+20)); st.system=s.system;
+  $("#site").value=id; $("#sys").value=s.system; $("#app").value=`2026-${s.app}`; $("#days").value=st.days;
+}
+function bind(id,key,scale=1){const el=$("#"+id); el.value=st[key]*scale; el.addEventListener("input",()=>{st[key]=+el.value/scale;update();});}
+bind("D","D"); bind("beta","beta"); bind("f0","f0",100); bind("Ea","Ea"); bind("s","s"); bind("dmg","dmg",100); bind("surf","surf");
+$("#site").addEventListener("change",e=>{loadSite(e.target.value);update();});
+$("#sys").addEventListener("change",e=>{st.system=e.target.value;update();});
+$("#place").addEventListener("change",e=>{st.placement=e.target.value;update();});
+$("#tex").addEventListener("change",e=>{st.texture=e.target.value;update();});
+$("#app").addEventListener("input",e=>{const v=e.target.value; if(v){st.app=v.slice(5);update();}});
+$("#days").addEventListener("input",e=>{st.days=+e.target.value;update();});
+$("#place").value=st.placement; $("#tex").value=st.texture;
+loadSite(st.site);
+
+/* ---------- 绘图 ---------- */
+function frame(svgSel,h,m){const w=Math.max(300,svgSel.node().parentNode.clientWidth);svgSel.attr("viewBox",`0 0 ${w} ${h}`);svgSel.selectAll("*").remove();return {w,h,m};}
+function axes(svg,x,y,{w,h,m},yfmt){
+  svg.append("g").attr("class","gridl").attr("transform",`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickSize(-(w-m.l-m.r)).tickFormat(""));
+  svg.append("g").attr("class","axis").attr("transform",`translate(0,${h-m.b})`).call(d3.axisBottom(x).ticks(Math.min(10,w/70)).tickFormat(d=>d+"d"));
+  svg.append("g").attr("class","axis").attr("transform",`translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5).tickFormat(yfmt||(d=>d)));
+}
+let cur=null, xMain=null;
+function drawMain(r){
+  const svg=d3.select("#main"), f=frame(svg,300,{l:44,r:14,t:12,b:28}), {w,h,m}=f, n=r.F.length;
+  const x=d3.scaleLinear([0,n-1],[m.l,w-m.r]), y=d3.scaleLinear([0,100],[h-m.b,m.t]); xMain=x;
+  axes(svg,x,y,f,d=>d+"%");
+  svg.append("line").attr("x1",m.l).attr("x2",w-m.r).attr("y1",y(80)).attr("y2",y(80)).attr("stroke","var(--muted)").attr("stroke-dasharray","3 3");
+  const L=a=>d3.line().x((_,i)=>x(i)).y(v=>y(100*v))(a);
+  svg.append("path").attr("d",L(r.Fw)).attr("fill","none").attr("stroke","var(--water)").attr("stroke-width",2).attr("stroke-dasharray","6 4");
+  svg.append("path").attr("d",L(r.F)).attr("fill","none").attr("stroke","var(--field)").attr("stroke-width",2.4);
+  const mark=(d,col,lab,dy)=>{ if(d==null) return; svg.append("circle").attr("cx",x(d)).attr("cy",y(80)).attr("r",4.5).attr("fill",col).attr("stroke","var(--surface)").attr("stroke-width",1.5);
+    svg.append("text").attr("x",x(d)+6).attr("y",y(80)+dy).attr("font-size",11).attr("fill","var(--ink)").text(lab); };
+  const dw=r.Fw.findIndex(v=>v>=.8-1e-9);
+  mark(dw<0?null:dw,"var(--water)",`静水第 ${dw} 天`,r.d80!=null&&r.d80<dw?14:-8);
+  mark(r.d80,"var(--field)",`田间第 ${r.d80} 天`,r.d80!=null&&r.d80<dw?-8:14);
+  const hov=svg.append("line").attr("y1",m.t).attr("y2",h-m.b).attr("stroke","var(--muted)").attr("opacity",0);
+  svg.append("rect").attr("x",m.l).attr("y",m.t).attr("width",w-m.l-m.r).attr("height",h-m.t-m.b).attr("fill","transparent")
+    .on("mousemove",e=>{const [px]=d3.pointer(e); const i=Math.max(0,Math.min(n-1,Math.round(x.invert(px)))); hov.attr("x1",x(i)).attr("x2",x(i)).attr("opacity",.6);
+      const tip=$("#tip"); tip.hidden=false; tip.innerHTML=`<b>第 ${i} 天</b>（${fmt(doyOf(st.app)+i)}）<br>田间 <b class="num">${(100*r.F[i]).toFixed(0)}%</b> · 静水 ${(100*r.Fw[i]).toFixed(0)}%<br><span class="muted">包膜处 ${r.Ts[i].toFixed(1)} °C，速率 ×${r.rate[i].toFixed(2)}</span>`;
+      const box=$("#mainBox").getBoundingClientRect(), sb=svg.node().getBoundingClientRect(); const sx=sb.width/w; let left=x(i)*sx+12; if(left+tip.offsetWidth>box.width) left=x(i)*sx-tip.offsetWidth-12; tip.style.left=left+"px"; tip.style.top=(sb.top-box.top+20)+"px";})
+    .on("mouseleave",()=>{hov.attr("opacity",0);$("#tip").hidden=true;});
+}
+function drawTemp(r){
+  const svg=d3.select("#temp"), f=frame(svg,200,{l:36,r:10,t:10,b:28}), {w,h,m}=f, n=r.Ts.length;
+  const lo=Math.floor(Math.min(d3.min(r.Ts),d3.min(r.Tair))-2), hi=Math.ceil(Math.max(d3.max(r.Ts),d3.max(r.Tair))+2);
+  const x=d3.scaleLinear([0,n-1],[m.l,w-m.r]), y=d3.scaleLinear([lo,hi],[h-m.b,m.t]).nice();
+  axes(svg,x,y,f,d=>d+"°");
+  if(lo<0) svg.append("line").attr("x1",m.l).attr("x2",w-m.r).attr("y1",y(0)).attr("y2",y(0)).attr("stroke","var(--moist)").attr("stroke-dasharray","2 3");
+  const L=a=>d3.line().x((_,i)=>x(i)).y(v=>y(v))(a);
+  svg.append("path").attr("d",L(r.Tair)).attr("fill","none").attr("stroke","var(--air)").attr("stroke-width",1.5);
+  svg.append("path").attr("d",L(r.Ts)).attr("fill","none").attr("stroke","var(--soil)").attr("stroke-width",2.2);
+}
+function drawRate(r){
+  const svg=d3.select("#rate"), f=frame(svg,200,{l:36,r:10,t:10,b:28}), {w,h,m}=f, n=r.rate.length;
+  const x=d3.scaleLinear([0,n-1],[m.l,w-m.r]), y=d3.scaleLinear([0,Math.max(1.2,d3.max(r.rate)*1.1)],[h-m.b,m.t]).nice();
+  axes(svg,x,y,f,d=>"×"+d);
+  svg.append("line").attr("x1",m.l).attr("x2",w-m.r).attr("y1",y(1)).attr("y2",y(1)).attr("stroke","var(--muted)").attr("stroke-dasharray","3 3");
+  const L=a=>d3.line().x((_,i)=>x(i)).y(v=>y(v))(a);
+  svg.append("path").attr("d",L(r.aW)).attr("fill","none").attr("stroke","var(--moist)").attr("stroke-width",1.6).attr("stroke-dasharray","5 4");
+  svg.append("path").attr("d",L(r.rate)).attr("fill","none").attr("stroke","var(--mult)").attr("stroke-width",2.2);
+}
+function tiles(r){
+  const D=st.D, d80=r.d80, diff=d80==null?null:d80-D;
+  const cell=(big,lab,extra="")=>`<div class="tile"><b>${big}</b><span>${lab}</span>${extra}</div>`;
+  $("#tiles").innerHTML=
+    cell(d80==null?`&gt;${st.days}`:d80,"田间达到 80% 的天数",diff==null?`<span class="delta muted">模拟期内未达到</span>`:`<span class="delta ${diff>0?"up":"down"}">比静水${diff>0?"慢 "+diff:"快 "+(-diff)} 天</span>`)+
+    cell(r.d50==null?`&gt;${st.days}`:r.d50,"田间达到 50% 的天数")+
+    cell(`${(100*r.end).toFixed(0)}%`,`第 ${st.days} 天累计释放`)+
+    cell(`×${r.mean.toFixed(2)}`,"平均速率（相对 25 °C 静水）");
+}
+function sysTable(){
+  const rows=Object.entries(M.SYSTEMS).map(([k,v])=>{const r=simulate({...opts(),system:k});return {k,v,r};});
+  const maxRate=d3.max(rows,o=>o.r.mean);
+  $("#sysTbl tbody").innerHTML=rows.map(({k,v,r})=>`<tr tabindex="0" data-k="${k}" class="${k===st.system?"cur":""}"><td>${v.label}</td><td class="n">${r.d50??"—"}</td><td class="n">${r.d80??"—"}</td><td><span class="bar" style="width:${Math.round(90*r.mean/maxRate)}px"></span> <span class="num">×${r.mean.toFixed(2)}</span></td><td class="n">${(100*r.end).toFixed(0)}%</td></tr>`).join("");
+  $("#sysTbl tbody").querySelectorAll("tr").forEach(tr=>{const go=()=>{st.system=tr.dataset.k;$("#sys").value=st.system;update();};tr.onclick=go;tr.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go();}};});
+}
+function opts(){const s=SITES.find(x=>x.id===st.site);return {T12:s.T,start:doyOf(st.app),days:st.days,D:st.D,beta:st.beta,f0:st.f0,Ea:st.Ea,s:st.s,dmg:st.dmg,surf:st.surf,system:st.system,placement:st.placement,texture:st.texture};}
+function labels(){
+  $("#DV").textContent=st.D+" 天"; $("#betaV").textContent=st.beta.toFixed(1)+(st.beta<1.8?"（线性型）":"（S 型）");
+  $("#f0V").textContent=(100*st.f0).toFixed(1)+"%"; $("#EaV").textContent=st.Ea+" kJ/mol"; $("#sV").textContent=st.s.toFixed(2);
+  $("#dmgV").textContent=(100*st.dmg).toFixed(1)+"%"; $("#surfV").textContent="×"+st.surf.toFixed(1);
+  $("#appV").textContent=fmt(doyOf(st.app)); $("#daysV").textContent=st.days+" 天";
+  $("#surfL").hidden=st.placement!=="surface";
+}
+function update(){ labels(); cur=simulate(opts()); tiles(cur); drawMain(cur); drawTemp(cur); drawRate(cur); sysTable(); }
+update();
+let rt; addEventListener("resize",()=>{clearTimeout(rt);rt=setTimeout(update,150);});
+</script>
